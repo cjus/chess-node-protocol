@@ -33,6 +33,9 @@ Owner: Carlos.
 3. Work is on a `claude/<topic>` branch from the latest `main`, with a PR to `main` and green
    CI. Open PRs as drafts and mark them ready when their work is done: CI checks only PRs
    that are ready (Actions minutes are limited, cjus/chessgui#73).
+4. **Claude may merge its PRs to `main`** (granted by Carlos 2026-10-21, for this repository and
+   the rest of M1b's work) once CI (one check, `CI`) is green on the latest commit, the PR merges
+   cleanly and no review comment is unanswered. Use a merge commit, not a squash.
 
 ## Items for Carlos go in GitHub issues
 
