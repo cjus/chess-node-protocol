@@ -1,0 +1,12 @@
+{"session": "chess960", "description": "a Chess960 position is searched, and its castling written king-takes-rook (spec 2)", "requires": ["engine", "engine.chess960", "engine.rootMoves"]}
+{"send": {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocol": "1.0", "client": {"name": "cnp-conformance", "version": "1.0"}}}}
+{"expect": {"id": 1, "result": {"protocol": "1.0", "node": {"name": "$string", "version": "$string", "license": "$string"}, "capabilities": "$object"}}}
+{"send": {"jsonrpc": "2.0", "id": 2, "method": "engine/search", "params": {"position": {"fen": "bbqnnrkr/pppppppp/8/8/8/8/PPPPPPPP/BBQNNRKR w HFhf - 0 1", "chess960": true}, "limits": {"depth": 3}}}}
+{"expect": {"id": 2, "result": {"bestMove": "$move"}}}
+{"comment": "Only castling with the h-rook is legal at the root: written king onto rook."}
+{"send": {"jsonrpc": "2.0", "id": 3, "method": "engine/search", "params": {"position": {"fen": "4k3/8/8/8/8/8/8/R5KR w HA - 0 1", "chess960": true}, "limits": {"depth": 1}, "rootMoves": ["g1h1"]}}}
+{"expect": {"id": 3, "result": {"bestMove": "g1h1"}}}
+{"send": {"jsonrpc": "2.0", "id": 99, "method": "shutdown"}}
+{"expect": {"id": 99, "result": null}}
+{"send": {"jsonrpc": "2.0", "method": "exit"}}
+{"expectExit": 0}

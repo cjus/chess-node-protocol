@@ -67,11 +67,12 @@ The words MUST, MUST NOT, SHOULD, SHOULD NOT and MAY are used as in
 
   The moves let a node see repetitions. A client MUST send at least the moves since the last
   capture or pawn move, and MAY send every move since the FEN. `moves` may be left out when
-  there are none.
+  there are none. A Chess960 game (capability `chess960`) adds `"chess960": true`.
 - **Moves** are coordinate text, as in UCI: the square a piece leaves, the square it reaches,
   and for a promotion the new piece in lower case (`e2e4`, `e7e8q`). Castling is the king's
-  move (`e1g1`). In Chess960 (capability `chess960`) castling is the king moving onto its own
-  rook (`e1h1`), and the FEN's castling rights are Shredder-FEN (`HAha`) or X-FEN.
+  move (`e1g1`). In a position with `"chess960": true`, castling is the king moving onto its
+  own rook (`e1h1`), both in requests and in answers, and the FEN's castling rights may be
+  Shredder-FEN (`HAha`) or X-FEN. A node SHOULD accept either castling notation in a request.
 - **Scores** are from the point of view of the side to move: `{"cp": 18}` in centipawns
   (hundredths of a pawn), or `{"mate": 3}` for mate in 3 moves, negative when the side to move
   is the one mated. A score that is only a bound has `"bound": "lower"` (the true score is at
@@ -241,7 +242,7 @@ Every engine node answers `engine/search` with the limits `depth`, `nodes`, `tim
 | `deterministic` | `deterministic` |
 | `clock` | `limits.clock` |
 | `mate` | `limits.mate` |
-| `chess960` | Chess960 positions and castling |
+| `chess960` | Positions with `"chess960": true`: Chess960 starting positions and castling |
 | `progress` | `progressMs`, and `engine/progress` |
 
 ### 6.3 Limits
@@ -559,5 +560,6 @@ These names are reserved, so that nothing else uses them:
 
 ## 14. Changes
 
-- **1.0 (draft)**, 2026-10-21: the first version. Its design came from Solrac, a chess board
+- **1.0 (draft)**, 2026-10-21: the first version. Before it was final: `chess960` in a
+  position, so a Chess960 game says so. Its design came from Solrac, a chess board
   that teaches, and cb2026, its engine.
