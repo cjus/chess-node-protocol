@@ -375,7 +375,8 @@ pub struct SearchResult {
     /// The reply the engine expects.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ponder: Option<String>,
-    /// The best line's score. Missing when there is no legal move.
+    /// The best line's score. Missing when there is no legal move, or when the search was
+    /// stopped before it scored a line.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub score: Option<Score>,
     /// The best line, starting with the best move.
