@@ -87,6 +87,10 @@ pub struct Position {
     /// The moves played from it, in order, in coordinate notation.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub moves: Vec<String>,
+    /// A Chess960 game (capability `chess960`): castling is written as the king moving onto
+    /// its own rook (`e1h1`), in requests and answers.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub chess960: bool,
 }
 
 impl Position {
@@ -100,6 +104,7 @@ impl Position {
         Position {
             fen: fen.into(),
             moves: Vec::new(),
+            chess960: false,
         }
     }
 

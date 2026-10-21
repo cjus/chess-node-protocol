@@ -23,3 +23,16 @@
 pub mod pattern;
 pub mod runner;
 pub mod session;
+
+/// Where the sessions are: the `conformance` directory of this crate's repository.
+///
+/// Cargo checks out a git dependency's whole repository, so a node that depends on this crate
+/// by git can run every session in its own tests:
+///
+/// ```no_run
+/// use std::path::PathBuf;
+/// use cnp_conformance::{SESSIONS, session};
+///
+/// let sessions = session::load(&[PathBuf::from(SESSIONS)]).unwrap();
+/// ```
+pub const SESSIONS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../conformance");
