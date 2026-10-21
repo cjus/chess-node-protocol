@@ -306,7 +306,7 @@ Result:
 | --- | --- | --- |
 | `bestMove` | move or `null` | The move to play. `null` when the side to move has no legal move (checkmate or stalemate) |
 | `ponder` | move | The reply the engine expects, if it has one |
-| `score` | score | The best line's score. Missing when there is no legal move |
+| `score` | score | The best line's score. Missing when there is no legal move, or when the search was stopped before it scored a line |
 | `pv` | array of moves | The best line, starting with the best move |
 | `depth` | integer | The depth completed |
 | `selDepth` | integer | The deepest any line went, extensions and quiescence included |
@@ -352,7 +352,7 @@ the search answers at once with the best it has found, with `stopped` true. Even
 before it finished its first depth answers with a legal move, if the position has one. Stopping a search
 that has already answered, or that never existed, is not an error, because the two messages can
 cross. Use `engine/stop` for "move now", and `$/cancelRequest` when the result is no longer
-wanted.
+wanted. A search stopped before it scored a line answers with its move and no `score`.
 
 ```cnp
 → {"jsonrpc": "2.0", "id": 9, "method": "engine/search", "params": {"position": {"fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"}, "limits": {"infinite": true}}}
