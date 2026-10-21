@@ -1,0 +1,26 @@
+# The Chess Node Protocol's workspace: `cnp`, the protocol's types and its stdin/stdout
+# connection, and `cnp-conformance`, the runner for the conformance sessions in
+# `conformance/`. The specification is `spec/cnp.md`.
+
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+# The lowest of the toolchains the protocol's users pin (cb2026's), so they can all build it.
+rust-version = "1.97.0"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/cjus/chess-node-protocol"
+publish = false
+
+[workspace.dependencies]
+cnp = { path = "crates/cnp" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[workspace.lints.rust]
+# Every public item is documented: the crate is how other programs learn the protocol.
+missing_docs = "deny"
+unsafe_code = "forbid"

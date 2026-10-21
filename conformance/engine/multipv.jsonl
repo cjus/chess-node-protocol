@@ -1,0 +1,9 @@
+{"session": "multipv", "description": "multipv 2 answers with two lines, the best first (spec 7.1)", "requires": ["engine", "engine.multipv", "limits.maxMultipv"]}
+{"send": {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocol": "1.0", "client": {"name": "cnp-conformance", "version": "1.0"}}}}
+{"expect": {"id": 1, "result": {"protocol": "1.0", "node": {"name": "$string", "version": "$string", "license": "$string"}, "capabilities": "$object"}}}
+{"send": {"jsonrpc": "2.0", "id": 2, "method": "engine/search", "params": {"position": {"fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"}, "limits": {"depth": 4}, "multipv": 2}}}
+{"expect": {"id": 2, "result": {"bestMove": "$move", "lines": [{"multipv": 1, "score": "$object", "pv": "$array"}, {"multipv": 2, "score": "$object", "pv": "$array"}]}}}
+{"send": {"jsonrpc": "2.0", "id": 99, "method": "shutdown"}}
+{"expect": {"id": 99, "result": null}}
+{"send": {"jsonrpc": "2.0", "method": "exit"}}
+{"expectExit": 0}

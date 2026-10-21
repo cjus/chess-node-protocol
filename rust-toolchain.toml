@@ -1,0 +1,5 @@
+# Pin the compiler so builds and lints are reproducible on every machine. The lowest of the
+# toolchains cb2026 and Solrac pin, so the crate builds with both. Bump it in its own PR.
+[toolchain]
+channel = "1.97.0"
+components = ["rustfmt", "clippy"]

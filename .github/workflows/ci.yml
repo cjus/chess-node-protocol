@@ -1,0 +1,87 @@
+# Checks pull requests that are ready for review. One job on Linux, to keep the account's
+# Actions minutes low (they ran out in October 2026, cjus/chessgui#73):
+#
+# - One job, `CI`: GitHub bills each job rounded up to a whole minute.
+# - Draft pull requests aren't checked. A PR is checked when it is marked ready, and again on
+#   each push after that.
+# - A pull request that changes only Markdown outside `spec/` skips the build and passes in
+#   seconds. The spec is checked by the tests (its examples against the types).
+# - No run after a merge: the PR's run already checked the merge result. Run it by hand
+#   (workflow_dispatch) to check `main`.
+# - Only `main` saves the build cache.
+name: CI
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  check:
+    name: CI
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # A pull request's commit is the merge of the PR into main, so its first parent is
+          # main: two commits are enough to see what the PR changes.
+          fetch-depth: 2
+      - name: Decide what to check
+        id: scope
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT" = pull_request ]; then
+            # Through a file, not a pipe: with `pipefail`, `grep -q` stopping early could fail
+            # `git diff` and pass for "documentation only".
+            git diff --name-only HEAD^1 HEAD > "$RUNNER_TEMP/changed"
+            cat "$RUNNER_TEMP/changed"
+            if grep -qvE '\.md$' "$RUNNER_TEMP/changed" || grep -qE '^spec/' "$RUNNER_TEMP/changed"; then
+              build=true
+            else
+              build=false
+            fi
+          else
+            build=true
+          fi
+          echo "build=$build" >> "$GITHUB_OUTPUT"
+          echo "Build, test and check licences: $build."
+      - name: Install the toolchain from rust-toolchain.toml
+        if: steps.scope.outputs.build == 'true'
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+        if: steps.scope.outputs.build == 'true'
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Format
+        if: steps.scope.outputs.build == 'true'
+        run: cargo fmt --all --check
+      - name: Clippy
+        if: steps.scope.outputs.build == 'true'
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: Tests (the spec's examples and the lifecycle sessions included)
+        if: steps.scope.outputs.build == 'true'
+        run: cargo test --workspace --locked
+      - name: Docs
+        if: steps.scope.outputs.build == 'true'
+        run: cargo doc --workspace --no-deps --document-private-items --locked
+        env:
+          RUSTDOCFLAGS: -D warnings
+      - uses: taiki-e/install-action@v2
+        if: steps.scope.outputs.build == 'true'
+        with:
+          tool: cargo-deny
+      - name: Check licences, advisories, bans and sources
+        if: steps.scope.outputs.build == 'true'
+        run: cargo deny check

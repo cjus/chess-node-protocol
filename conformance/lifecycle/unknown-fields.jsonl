@@ -1,0 +1,9 @@
+{"session": "unknown-fields", "description": "unknown fields are ignored, params sent to a method without params included (spec 2)"}
+{"send": {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocol": "1.0", "client": {"name": "cnp-conformance", "version": "1.0", "future": true}, "future": {"x": 1}}}}
+{"expect": {"id": 1, "result": {"protocol": "1.0"}}}
+{"send": {"jsonrpc": "2.0", "id": 2, "method": "ping", "params": {"future": 1}}}
+{"expect": {"id": 2, "result": null}}
+{"send": {"jsonrpc": "2.0", "id": 99, "method": "shutdown"}}
+{"expect": {"id": 99, "result": null}}
+{"send": {"jsonrpc": "2.0", "method": "exit"}}
+{"expectExit": 0}
