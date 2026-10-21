@@ -1,0 +1,5 @@
+{"session": "exit-without-shutdown", "description": "exit without shutdown ends the node with exit code 1 (spec 5.3)"}
+{"send": {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocol": "1.0", "client": {"name": "cnp-conformance", "version": "1.0"}}}}
+{"expect": {"id": 1, "result": {"protocol": "1.0", "node": {"name": "$string", "version": "$string", "license": "$string"}, "capabilities": "$object"}}}
+{"send": {"jsonrpc": "2.0", "method": "exit"}}
+{"expectExit": 1}

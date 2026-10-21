@@ -1,0 +1,10 @@
+{"session": "not-initialized", "description": "a request before initialize is NotInitialized, and a notification is ignored (spec 5.1)"}
+{"send": {"jsonrpc": "2.0", "method": "nosuch/notice"}}
+{"send": {"jsonrpc": "2.0", "id": 1, "method": "ping"}}
+{"expect": {"id": 1, "error": {"code": -32002, "message": "$string"}}}
+{"send": {"jsonrpc": "2.0", "id": 2, "method": "initialize", "params": {"protocol": "1.0", "client": {"name": "cnp-conformance", "version": "1.0"}}}}
+{"expect": {"id": 2, "result": {"protocol": "1.0"}}}
+{"send": {"jsonrpc": "2.0", "id": 99, "method": "shutdown"}}
+{"expect": {"id": 99, "result": null}}
+{"send": {"jsonrpc": "2.0", "method": "exit"}}
+{"expectExit": 0}

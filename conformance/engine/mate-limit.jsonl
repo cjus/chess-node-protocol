@@ -1,0 +1,9 @@
+{"session": "mate-limit", "description": "limits.mate finds a mate (spec 7.1)", "requires": ["engine", "engine.mate"]}
+{"send": {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocol": "1.0", "client": {"name": "cnp-conformance", "version": "1.0"}}}}
+{"expect": {"id": 1, "result": {"protocol": "1.0", "node": {"name": "$string", "version": "$string", "license": "$string"}, "capabilities": "$object"}}}
+{"send": {"jsonrpc": "2.0", "id": 2, "method": "engine/search", "params": {"position": {"fen": "6k1/5ppp/8/8/8/8/5PPP/3R2K1 w - - 0 1"}, "limits": {"mate": 1}}}}
+{"expect": {"id": 2, "result": {"bestMove": "d1d8", "score": {"mate": 1}}}}
+{"send": {"jsonrpc": "2.0", "id": 99, "method": "shutdown"}}
+{"expect": {"id": 99, "result": null}}
+{"send": {"jsonrpc": "2.0", "method": "exit"}}
+{"expectExit": 0}

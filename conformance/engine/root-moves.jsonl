@@ -1,0 +1,11 @@
+{"session": "root-moves", "description": "rootMoves limits the root (spec 7.1)", "requires": ["engine", "engine.rootMoves"]}
+{"send": {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocol": "1.0", "client": {"name": "cnp-conformance", "version": "1.0"}}}}
+{"expect": {"id": 1, "result": {"protocol": "1.0", "node": {"name": "$string", "version": "$string", "license": "$string"}, "capabilities": "$object"}}}
+{"send": {"jsonrpc": "2.0", "id": 2, "method": "engine/search", "params": {"position": {"fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"}, "limits": {"depth": 3}, "rootMoves": ["a2a3"]}}}
+{"expect": {"id": 2, "result": {"bestMove": "a2a3"}}}
+{"send": {"jsonrpc": "2.0", "id": 3, "method": "engine/search", "params": {"position": {"fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"}, "limits": {"depth": 1}, "rootMoves": ["e2e5"]}}}
+{"expect": {"id": 3, "error": {"code": -32011, "message": "$string"}}}
+{"send": {"jsonrpc": "2.0", "id": 99, "method": "shutdown"}}
+{"expect": {"id": 99, "result": null}}
+{"send": {"jsonrpc": "2.0", "method": "exit"}}
+{"expectExit": 0}

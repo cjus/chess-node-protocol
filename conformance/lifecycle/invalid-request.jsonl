@@ -1,0 +1,13 @@
+{"session": "invalid-request", "description": "JSON that isn't a message is InvalidRequest, with the id when it can be read; a batch too (spec 4)"}
+{"send": {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocol": "1.0", "client": {"name": "cnp-conformance", "version": "1.0"}}}}
+{"expect": {"id": 1, "result": {"protocol": "1.0", "node": {"name": "$string", "version": "$string", "license": "$string"}, "capabilities": "$object"}}}
+{"sendRaw": "{\"jsonrpc\": \"2.0\", \"id\": 5}"}
+{"expect": {"id": 5, "error": {"code": -32600, "message": "$string"}}}
+{"sendRaw": "[{\"jsonrpc\": \"2.0\", \"id\": 6, \"method\": \"ping\"}, {\"jsonrpc\": \"2.0\", \"id\": 7, \"method\": \"ping\"}]"}
+{"expect": {"id": null, "error": {"code": -32600}}}
+{"send": {"jsonrpc": "2.0", "id": 8, "method": "ping"}}
+{"expect": {"id": 8, "result": null}}
+{"send": {"jsonrpc": "2.0", "id": 99, "method": "shutdown"}}
+{"expect": {"id": 99, "result": null}}
+{"send": {"jsonrpc": "2.0", "method": "exit"}}
+{"expectExit": 0}

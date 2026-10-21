@@ -1,0 +1,9 @@
+{"session": "shutting-down", "description": "after shutdown, a request is ShuttingDown (spec 5.3)"}
+{"send": {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocol": "1.0", "client": {"name": "cnp-conformance", "version": "1.0"}}}}
+{"expect": {"id": 1, "result": {"protocol": "1.0", "node": {"name": "$string", "version": "$string", "license": "$string"}, "capabilities": "$object"}}}
+{"send": {"jsonrpc": "2.0", "id": 2, "method": "shutdown"}}
+{"expect": {"id": 2, "result": null}}
+{"send": {"jsonrpc": "2.0", "id": 3, "method": "ping"}}
+{"expect": {"id": 3, "error": {"code": -32016, "message": "$string"}}}
+{"send": {"jsonrpc": "2.0", "method": "exit"}}
+{"expectExit": 0}

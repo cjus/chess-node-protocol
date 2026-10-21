@@ -1,0 +1,9 @@
+{"session": "incompatible-version", "description": "another major version is IncompatibleVersion with the versions spoken, and initialize can then be tried again (spec 5.1)"}
+{"send": {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocol": "2.0", "client": {"name": "cnp-conformance", "version": "1.0"}}}}
+{"expect": {"id": 1, "error": {"code": -32010, "data": {"supported": "$array"}}}}
+{"send": {"jsonrpc": "2.0", "id": 2, "method": "initialize", "params": {"protocol": "1.0", "client": {"name": "cnp-conformance", "version": "1.0"}}}}
+{"expect": {"id": 2, "result": {"protocol": "1.0"}}}
+{"send": {"jsonrpc": "2.0", "id": 99, "method": "shutdown"}}
+{"expect": {"id": 99, "result": null}}
+{"send": {"jsonrpc": "2.0", "method": "exit"}}
+{"expectExit": 0}
