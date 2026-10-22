@@ -26,6 +26,12 @@ first nodes are cb2026, Solrac's engine, and `solrac-voice`.
 | [`conformance/`](conformance) | Conformance sessions: exchanges written as JSON lines that a node must pass |
 | [`crates/cnp-conformance`](crates/cnp-conformance) | `cnp-conformance`, which plays the sessions against a node program, and `cnp-example-node`, the smallest correct node |
 
+## Proposed preferences extension
+
+[Draft-1 preferences](spec/preferences.md) and `cnp::preferences` add typed reads,
+revision-checked patches and durable retry receipts for review with chessdb. This
+is a proposal, not a released CNP domain or shipped Solrac integration.
+
 ## Using it
 
 From Rust, depend on the crate by git:

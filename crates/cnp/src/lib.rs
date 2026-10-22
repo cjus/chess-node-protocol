@@ -45,6 +45,7 @@ pub mod engine;
 pub mod lifecycle;
 pub mod message;
 pub mod method;
+pub mod preferences;
 pub mod stdio;
 pub mod voice;
 

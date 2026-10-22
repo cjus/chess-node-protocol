@@ -154,6 +154,9 @@ pub struct NodeInfo {
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Capabilities {
+    /// Proposed draft preferences domain; clients must also check its initialize metadata.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub preferences: Option<crate::preferences::Capabilities>,
     /// The engine domain (`engine/…`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub engine: Option<EngineCapabilities>,

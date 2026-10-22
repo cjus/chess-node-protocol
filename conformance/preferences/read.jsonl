@@ -1,0 +1,9 @@
+{"session":"preferences-read","description":"draft-1 typed committed snapshot, without creating defaults","requires":["preferences.read"]}
+{"send":{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocol":"1.0","client":{"name":"cnp-conformance","version":"1.0"}}}}
+{"expect":{"id":1,"result":{"preferencesContract":"draft-1","preferencesSchemaVersion":1}}}
+{"send":{"jsonrpc":"2.0","id":2,"method":"preferences/get"}}
+{"expect":{"id":2,"result":{"schemaVersion":1,"revision":"$integer","values":"$object"}}}
+{"send":{"jsonrpc":"2.0","id":3,"method":"shutdown"}}
+{"expect":{"id":3,"result":null}}
+{"send":{"jsonrpc":"2.0","method":"exit"}}
+{"expectExit":0}
