@@ -8,6 +8,7 @@
 //! | `engine/stop` | request | [`Stop`]: [`StopParams`] → `null` |
 //! | `engine/techniques` | request | [`Techniques`]: no params → [`TechniquesResult`] |
 //! | `engine/levels` | request | [`Levels`]: no params → [`LevelsResult`] |
+//! | `engine/evaluate` | request | [`Evaluate`]: [`EvaluateParams`] → [`EvaluateResult`] |
 //!
 //! Positions and moves are chess, not any engine's internals: a FEN and the moves played
 //! from it, and moves in coordinate notation (`e2e4`, `e7e8q`). Every request stands alone:
@@ -63,6 +64,9 @@ pub struct EngineCapabilities {
     /// Progress while searching (`progressMs`, `engine/progress`).
     #[serde(default)]
     pub progress: bool,
+    /// A position's evaluation, term by term (`engine/evaluate`).
+    #[serde(default)]
+    pub evaluate: bool,
 }
 
 /// The `engine/search` request: search a position and answer with the best move.
@@ -574,6 +578,57 @@ pub struct EloRange {
     pub min: u32,
     /// The highest.
     pub max: u32,
+}
+
+/// The `engine/evaluate` request (capability `evaluate`): the engine's evaluation of a
+/// position as it stands, without a search, and what it is made of.
+///
+/// **Pitfall:** an evaluation doesn't search, so it misses a piece about to be captured and
+/// doesn't know that a side is mated. To explain a search's score, evaluate the position at
+/// the end of its `pv`, which is where the score came from.
+pub enum Evaluate {}
+
+impl RequestMethod for Evaluate {
+    const NAME: &'static str = "engine/evaluate";
+    type Params = EvaluateParams;
+    type Result = EvaluateResult;
+}
+
+/// What to evaluate.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EvaluateParams {
+    /// The position.
+    pub position: Position,
+}
+
+/// A position's evaluation.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EvaluateResult {
+    /// The evaluation, in centipawns from the side to move's point of view, always exact.
+    pub score: Score,
+    /// What the score is made of. The side to move's terms less the other side's are the
+    /// score, give or take rounding.
+    pub terms: Vec<Term>,
+}
+
+/// One term of an evaluation, like material or mobility.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Term {
+    /// The engine's own id for it, like `mobility`. Two engines may split their evaluations
+    /// differently.
+    pub id: String,
+    /// Its name for people, like `Mobility`.
+    pub name: String,
+    /// What it measures, in a sentence.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    /// What it is worth to White in this position, in centipawns from White's point of view.
+    pub white: i32,
+    /// What it is worth to Black, in centipawns from Black's point of view.
+    pub black: i32,
 }
 
 /// Whether `text` has the form of a move in coordinate notation: two squares, and a promotion
