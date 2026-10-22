@@ -43,6 +43,7 @@ fn request_params(request: &Request) -> Result<(), String> {
         "voice/speak" => check::<voice::Speak>(request),
         "voice/transcribe" => check::<voice::Transcribe>(request),
         "voice/models" => check::<voice::Models>(request),
+        "voice/listen" => check::<voice::Listen>(request),
         other => Err(format!("no method {other} in the crate")),
     }
 }
@@ -67,6 +68,7 @@ fn response_result(method: &str, response: &Response) -> Result<(), String> {
         "voice/speak" => check::<voice::Speak>(response),
         "voice/transcribe" => check::<voice::Transcribe>(response),
         "voice/models" => check::<voice::Models>(response),
+        "voice/listen" => check::<voice::Listen>(response),
         other => Err(format!("no method {other} in the crate")),
     }
 }
@@ -77,6 +79,9 @@ fn notification_params(notification: &Notification) -> Result<(), String> {
         "$/cancelRequest" => notification.params::<lifecycle::CancelRequest>().map(drop),
         "engine/progress" => notification.params::<engine::EngineProgress>().map(drop),
         "voice/modelState" => notification.params::<voice::ModelStateChanged>().map(drop),
+        "voice/audio" => notification.params::<voice::Audio>().map(drop),
+        "voice/speechStarted" => notification.params::<voice::SpeechStarted>().map(drop),
+        "voice/heard" => notification.params::<voice::Heard>().map(drop),
         other => return Err(format!("no notification {other} in the crate")),
     };
     result.map_err(|e| e.message)

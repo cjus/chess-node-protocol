@@ -7,10 +7,28 @@
 //! | `voice/transcribe` | request | [`Transcribe`]: [`TranscribeParams`] → [`TranscribeResult`] |
 //! | `voice/models` | request | [`Models`]: no params → [`ModelsResult`] |
 //! | `voice/modelState` | notification, node to client | [`ModelStateChanged`]: [`ModelStateParams`] |
+//! | `voice/listen` | request | [`Listen`]: [`ListenParams`] → [`ListenResult`] |
+//! | `voice/audio` | notification, client to node | [`Audio`]: [`AudioParams`] |
+//! | `voice/speechStarted` | notification, node to client | [`SpeechStarted`]: [`SpeechStartedParams`] |
+//! | `voice/heard` | notification, node to client | [`Heard`]: [`HeardParams`] |
 //!
 //! A voice node only turns text into audio and audio into text: it never touches a
 //! microphone or a speaker. Audio travels as base64 ([RFC 4648], with padding) in one of the
-//! [`AudioFormat`]s. A node downloads and loads its own models, and says how far it has got
+//! [`AudioFormat`]s.
+//!
+//! ## Listening
+//!
+//! `voice/listen` (capability `listen`) hears speech as it comes, so a player can talk without
+//! holding a button. The client streams its microphone's samples in `voice/audio`
+//! notifications, and the node says when someone starts speaking (`voice/speechStarted`) and,
+//! each time they pause, what they said (`voice/heard`). The listen is answered when the
+//! client ends its audio (`end`), after the last `voice/heard`, or at once with `Cancelled`
+//! when it is cancelled, dropping whatever it was hearing. Times in these messages are
+//! milliseconds into the listen's audio, not clock times.
+//!
+//! **Pitfall: audio and answers cross.** The client may still be sending audio for a listen
+//! the node has answered (an error, say). The node ignores audio for a listen it doesn't
+//! have, and the client stops sending once it sees the answer. A node downloads and loads its own models, and says how far it has got
 //! with `voice/modelState`; until a model is ready, requests that need it are answered with
 //! [`code::NOT_READY`](crate::code::NOT_READY).
 //!
@@ -18,6 +36,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::message::Id;
 use crate::method::{NoParams, NotificationMethod, RequestMethod};
 
 /// What a voice node can do. A missing capability is `false`.
@@ -30,6 +49,9 @@ pub struct VoiceCapabilities {
     /// Speech to text (`voice/transcribe`).
     #[serde(default)]
     pub transcribe: bool,
+    /// Hearing speech as it comes (`voice/listen`, and its notifications).
+    #[serde(default)]
+    pub listen: bool,
     /// Each word's start and end (`wordTimes`).
     #[serde(default)]
     pub word_times: bool,
@@ -220,6 +242,8 @@ pub enum ModelPurpose {
     Speak,
     /// Speech to text.
     Transcribe,
+    /// Hears when speech starts and ends, for `voice/listen`.
+    Listen,
 }
 
 /// How ready a model is.
@@ -274,6 +298,132 @@ pub struct ModelStateParams {
     pub id: String,
     /// Its state.
     pub state: ModelState,
+}
+
+/// The `voice/listen` request: hear speech as it comes, until the audio ends (see the
+/// [module docs](self)).
+pub enum Listen {}
+
+impl RequestMethod for Listen {
+    const NAME: &'static str = "voice/listen";
+    type Params = ListenParams;
+    type Result = ListenResult;
+}
+
+/// How the audio will come, and how to hear it.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListenParams {
+    /// The audio's format: [`AudioFormat::PcmF32`], the format that streams.
+    pub format: AudioFormat,
+    /// Samples a second. Every node takes 16000.
+    pub sample_rate: u32,
+    /// The language spoken, a BCP 47 tag. Missing: the node's default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub language: Option<String>,
+    /// How long a pause ends what someone is saying, in milliseconds. Missing: the node
+    /// decides.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub end_silence_ms: Option<u64>,
+    /// Shorter sounds aren't speech (a cough, a click), in milliseconds. Missing: the node
+    /// decides.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min_speech_ms: Option<u64>,
+    /// The longest one utterance may be, in milliseconds: at this length it ends, pause or
+    /// not. Missing: the node decides.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_speech_ms: Option<u64>,
+    /// Whether `voice/heard` gives each word's start and end (capability `wordTimes`).
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub word_times: bool,
+}
+
+impl ListenParams {
+    /// Raw samples at `sample_rate`, with every other setting the node's.
+    pub fn new(sample_rate: u32) -> ListenParams {
+        ListenParams {
+            format: AudioFormat::PcmF32,
+            sample_rate,
+            language: None,
+            end_silence_ms: None,
+            min_speech_ms: None,
+            max_speech_ms: None,
+            word_times: false,
+        }
+    }
+}
+
+/// A listen's answer, once its audio has ended.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListenResult {
+    /// How much audio the node heard in all, in milliseconds.
+    pub duration_ms: u64,
+}
+
+/// The `voice/audio` notification, from the client: the next piece of a listen's audio.
+pub enum Audio {}
+
+impl NotificationMethod for Audio {
+    const NAME: &'static str = "voice/audio";
+    type Params = AudioParams;
+}
+
+/// A piece of a listen's audio, or its end.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AudioParams {
+    /// The `voice/listen` request it belongs to.
+    pub id: Id,
+    /// The next samples, base64, in the listen's format and rate. May be missing with `end`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub audio: Option<String>,
+    /// Whether the audio has ended: no more comes for this listen.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub end: bool,
+}
+
+/// The `voice/speechStarted` notification, from the node: someone has started speaking.
+pub enum SpeechStarted {}
+
+impl NotificationMethod for SpeechStarted {
+    const NAME: &'static str = "voice/speechStarted";
+    type Params = SpeechStartedParams;
+}
+
+/// Where speech started.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SpeechStartedParams {
+    /// The `voice/listen` request it belongs to.
+    pub id: Id,
+    /// About where the speaker started, in milliseconds into the listen's audio.
+    pub start_ms: u64,
+}
+
+/// The `voice/heard` notification, from the node: what someone said, once they paused.
+pub enum Heard {}
+
+impl NotificationMethod for Heard {
+    const NAME: &'static str = "voice/heard";
+    type Params = HeardParams;
+}
+
+/// What was said in one utterance.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HeardParams {
+    /// The `voice/listen` request it belongs to.
+    pub id: Id,
+    /// What was said. Empty if no words were made out.
+    pub text: String,
+    /// Where the speech starts, in milliseconds into the listen's audio.
+    pub start_ms: u64,
+    /// Where it ends.
+    pub end_ms: u64,
+    /// Each word's start and end, if asked for and the model can tell.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub words: Vec<WordTime>,
 }
 
 fn is_false(b: &bool) -> bool {

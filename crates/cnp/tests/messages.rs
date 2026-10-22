@@ -2,6 +2,7 @@
 
 use cnp::engine::{self, Bound, Position, Score, ScoreValue, SearchLimits, SearchParams};
 use cnp::lifecycle::{self, Version, negotiate};
+use cnp::voice;
 use cnp::{Id, Message, NoParams, Notification, Request, Response, ResponseError, code};
 use serde_json::{Value, json};
 
@@ -114,6 +115,33 @@ fn typed_requests_round_trip_through_json() {
         json!({"position": {"fen": engine::START_FEN, "moves": ["e2e4", "e7e5"]},
                "limits": {"depth": 12}})
     );
+}
+
+#[test]
+fn a_listen_and_its_audio_leave_out_what_isnt_said() {
+    let listen = Request::new::<voice::Listen>(30, &voice::ListenParams::new(16_000));
+    assert_eq!(
+        Message::from(listen).to_value(),
+        json!({"jsonrpc": "2.0", "id": 30, "method": "voice/listen",
+               "params": {"format": "pcmF32", "sampleRate": 16000}})
+    );
+    // The last piece of audio may be only the end.
+    let end = voice::AudioParams {
+        id: Id::Number(30),
+        audio: None,
+        end: true,
+    };
+    assert_eq!(
+        Message::from(Notification::new::<voice::Audio>(&end)).to_value(),
+        json!({"jsonrpc": "2.0", "method": "voice/audio", "params": {"id": 30, "end": true}})
+    );
+    let heard = parse(json!({"jsonrpc": "2.0", "method": "voice/heard",
+        "params": {"id": 30, "text": "", "startMs": 10, "endMs": 900}}));
+    let Message::Notification(heard) = heard else {
+        panic!("not a notification")
+    };
+    let heard = heard.params::<voice::Heard>().unwrap();
+    assert_eq!((heard.text.as_str(), heard.words.len()), ("", 0));
 }
 
 #[test]
