@@ -229,6 +229,46 @@ fn a_search_result_with_no_legal_move_has_a_null_best_move() {
 }
 
 #[test]
+fn an_evaluation_is_a_score_and_its_terms_for_each_side() {
+    let result = engine::EvaluateResult {
+        score: Score::cp(-1),
+        terms: vec![
+            engine::Term {
+                id: "material".to_string(),
+                name: "Material".to_string(),
+                description: None,
+                white: 3940,
+                black: 3940,
+            },
+            engine::Term {
+                id: "tempo".to_string(),
+                name: "Tempo".to_string(),
+                description: Some("A bonus for the side to move.".to_string()),
+                white: 10,
+                black: 0,
+            },
+        ],
+    };
+    let value = serde_json::to_value(&result).unwrap();
+    // A term without a description leaves it out.
+    assert_eq!(
+        value,
+        json!({"score": {"cp": -1}, "terms": [
+            {"id": "material", "name": "Material", "white": 3940, "black": 3940},
+            {"id": "tempo", "name": "Tempo", "description": "A bonus for the side to move.",
+             "white": 10, "black": 0}
+        ]})
+    );
+    assert_eq!(
+        serde_json::from_value::<engine::EvaluateResult>(value).unwrap(),
+        result
+    );
+    // The capability is off unless offered.
+    let offered: engine::EngineCapabilities = serde_json::from_value(json!({})).unwrap();
+    assert!(!offered.evaluate);
+}
+
+#[test]
 fn versions_are_text_and_agree_on_the_major_version() {
     let v: Version = serde_json::from_value(json!("1.3")).unwrap();
     assert_eq!(v, Version { major: 1, minor: 3 });

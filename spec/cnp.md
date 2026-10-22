@@ -8,7 +8,8 @@ The Chess Node Protocol (CNP) connects a chess program, the **client**, to the p
 serve it, the **nodes**: chess engines, and voice modules that speak and listen. It does what
 UCI does for engines and more besides. A search can be limited to some root moves or a score
 window, the engine's techniques can be switched on and off for teaching, a search can ask for
-progress, and every score says whether it is exact or a bound. The same messages reach a node
+progress, every score says whether it is exact or a bound, and an engine can say what its
+evaluation of a position is made of. The same messages reach a node
 started on the same computer and, in a later version, one across the network or a cluster of
 many.
 
@@ -244,6 +245,7 @@ Every engine node answers `engine/search` with the limits `depth`, `nodes`, `tim
 | `mate` | `limits.mate` |
 | `chess960` | Positions with `"chess960": true`: Chess960 starting positions and castling |
 | `progress` | `progressMs`, and `engine/progress` |
+| `evaluate` | `engine/evaluate` |
 
 ### 6.3 Limits
 
@@ -268,6 +270,7 @@ Every engine node answers `engine/search` with the limits `depth`, `nodes`, `tim
 | `engine/stop` | request | End a search early, keeping its result |
 | `engine/techniques` | request | The search techniques that can be switched |
 | `engine/levels` | request | The playing levels and their ratings |
+| `engine/evaluate` | request | A position's evaluation without a search, term by term |
 
 ### 7.1 `engine/search`
 
@@ -393,6 +396,39 @@ With cb2026's measured levels (three of its twenty-one shown):
 → {"jsonrpc": "2.0", "id": 12, "method": "engine/levels"}
 ← {"jsonrpc": "2.0", "id": 12, "result": {"levels": [{"level": 0, "rating": 629}, {"level": 10, "rating": 1391}, {"level": 20, "rating": 2782}], "ratingScale": "CCRL Blitz", "fractional": true, "elo": {"min": 650, "max": 2450}}}
 ```
+
+### 7.6 `engine/evaluate`
+
+Needs `evaluate`. The engine's evaluation of a position as it stands, without a search, and
+what it is made of, so that a client can say why the engine likes a position. Params:
+
+| Field | Type | |
+| --- | --- | --- |
+| `position` | object | The position ([2](#2-conventions)) |
+
+A position whose FEN isn't valid, or with a move that isn't legal, is answered with
+`InvalidPosition`.
+
+Result:
+
+| Field | Type | |
+| --- | --- | --- |
+| `score` | score | The evaluation, in centipawns from the side to move's point of view, always exact |
+| `terms` | array | What the score is made of, each with `id` (the engine's own, like `mobility`), `name` (for people), optionally `description` (a sentence), and `white` and `black`: what the term is worth to each side in this position, in centipawns, each from its own side's point of view. The side to move's terms less the other side's are the score, give or take rounding |
+
+With cb2026's evaluation (three of its eight terms shown):
+
+```cnp
+→ {"jsonrpc": "2.0", "id": 13, "method": "engine/evaluate", "params": {"position": {"fen": "r1bqkb1r/pppp1ppp/2n2n2/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4"}}}
+← {"jsonrpc": "2.0", "id": 13, "result": {"score": {"cp": -1}, "terms": [{"id": "material", "name": "Material", "white": 3940, "black": 3940}, {"id": "mobility", "name": "Mobility", "description": "Safe squares each piece can reach.", "white": -69, "black": -72}, {"id": "tempo", "name": "Tempo", "white": 10, "black": 0}]}}
+```
+
+Term ids are the engine's own, as technique ids are: two engines may split their evaluations
+differently.
+
+An evaluation doesn't search, so it misses a piece about to be captured and doesn't know that a
+side is mated. To explain a search's score, evaluate the position at the end of its `pv`, which
+is where the score came from.
 
 ## 8. The voice domain
 
@@ -632,5 +668,7 @@ These names are reserved, so that nothing else uses them:
 - **1.0 (draft)**, 2026-10-21: the first version. Before it was final: `chess960` in a
   position, so a Chess960 game says so; and listening (`listen`, `voice/listen`,
   `voice/audio`, `voice/speechStarted`, `voice/heard`, and the purpose `listen`), so a player
-  can talk to Solrac without holding a button (cjus/chessgui#134). Its design came from
+  can talk to Solrac without holding a button (cjus/chessgui#134); and `engine/evaluate`
+  (capability `evaluate`), so a client can say why an engine likes a position
+  (cjus/chessgui#145). Its design came from
   Solrac, a chess board that teaches, and cb2026, its engine.
