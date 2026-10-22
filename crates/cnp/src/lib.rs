@@ -10,7 +10,8 @@
 //! - [`method`]: methods as types, tying each name to its params and result;
 //! - [`lifecycle`]: `initialize`, `ping`, `shutdown`, `exit` and `$/cancelRequest`;
 //! - [`engine`]: searching positions (`engine/…`);
-//! - [`voice`]: text to speech and speech to text (`voice/…`);
+//! - [`voice`]: text to speech, speech to text, and listening to speech as it comes
+//!   (`voice/…`);
 //! - [`stdio`]: reading and writing messages, one per line.
 //!
 //! The crate has no runtime and no threads of its own: a program reads messages in a loop of

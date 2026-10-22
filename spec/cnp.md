@@ -397,7 +397,8 @@ With cb2026's measured levels (three of its twenty-one shown):
 ## 8. The voice domain
 
 A voice node turns text into speech and speech into text. It never touches a microphone or a
-speaker: the client records and plays.
+speaker: the client records and plays. To listen, the client streams what its microphone
+hears, and the node says when someone speaks and what they said.
 
 | Method | Kind | |
 | --- | --- | --- |
@@ -406,6 +407,10 @@ speaker: the client records and plays.
 | `voice/transcribe` | request | Speech to text |
 | `voice/models` | request | Its models, and how ready each is |
 | `voice/modelState` | notification, node to client | A model's state changed |
+| `voice/listen` | request | Hear speech as it comes, until the audio ends |
+| `voice/audio` | notification, client to node | The next piece of a listen's audio |
+| `voice/speechStarted` | notification, node to client | Someone has started speaking |
+| `voice/heard` | notification, node to client | What they said, once they paused |
 
 Capabilities:
 
@@ -413,6 +418,7 @@ Capabilities:
 | --- | --- | --- |
 | `speak` | boolean | `voice/speak` |
 | `transcribe` | boolean | `voice/transcribe` |
+| `listen` | boolean | `voice/listen`, and the notifications that go with it |
 | `wordTimes` | boolean | Each word's start and end, in either direction |
 | `formats` | array of strings | The audio formats it reads and writes |
 
@@ -478,7 +484,8 @@ and, if asked for, `words`.
 ### 8.4 `voice/models` and `voice/modelState`
 
 `voice/models` takes no params. Its result is `models`, each with `id`, `name`, `purpose`
-(`speak` or `transcribe`), optionally `license`, and `state`. A state has a `stage`, one of
+(`speak`, `transcribe`, or `listen` for one that hears when speech starts and ends),
+optionally `license`, and `state`. A state has a `stage`, one of
 `waiting`, `downloading`, `unpacking`, `loading`, `ready` and `failed` in that order. While
 downloading it has `bytes` so far and `of` in all, if known. When failed it has a `message` for
 people.
@@ -490,6 +497,68 @@ stage, and while downloading at most about once a second.
 → {"jsonrpc": "2.0", "id": 21, "method": "voice/models"}
 ← {"jsonrpc": "2.0", "id": 21, "result": {"models": [{"id": "kokoro", "name": "Kokoro 82M", "purpose": "speak", "license": "Apache-2.0", "state": {"stage": "downloading", "bytes": 52000000, "of": 126000000}}]}}
 ← {"jsonrpc": "2.0", "method": "voice/modelState", "params": {"id": "kokoro", "state": {"stage": "ready"}}}
+```
+
+### 8.5 `voice/listen`
+
+Needs `listen`. The client streams what its microphone hears, and the node hears it as it
+comes: it says when someone starts speaking, and, once they pause, what they said. A player
+can talk to the client without pressing anything. A listen runs until its audio ends or it is
+cancelled.
+
+Params:
+
+| Field | Type | |
+| --- | --- | --- |
+| `format` | string | The audio's format: `pcmF32`, the format that streams |
+| `sampleRate` | integer | Samples a second. A node MUST take 16000, and MAY refuse other rates with `InvalidParams` |
+| `language` | string | The language spoken, a BCP 47 tag. Missing: the node's default |
+| `endSilenceMs` | integer | How long a pause ends what someone is saying. Missing: the node decides |
+| `minSpeechMs` | integer | Shorter sounds aren't speech (a cough, a click): nothing is said of them. Missing: the node decides |
+| `maxSpeechMs` | integer | The longest one utterance may be: at this length it ends, pause or not. Missing: the node decides |
+| `wordTimes` | boolean | Return each word's start and end in `voice/heard` (needs `wordTimes`) |
+
+Wrong params are `InvalidParams`, a duration of 0 or one the node can't keep to included.
+Until the models a listen needs are ready, it is `NotReady`. A node MAY hear one listen at a
+time, and answer another with `Busy`.
+
+The audio comes in `voice/audio` notifications from the client, in order:
+
+| Field | Type | |
+| --- | --- | --- |
+| `id` | id | The listen it belongs to |
+| `audio` | string | The next samples, base64, in the listen's format and rate. May be left out with `end` |
+| `end` | boolean | The audio has ended: no more comes for this listen |
+
+A node ignores audio for a listen it has already answered, or never had, since the two can
+cross. Audio that can't be decoded ends the listen with `InvalidParams`.
+
+Times are milliseconds into the listen's audio, from its first sample, not clock times. As the
+node hears each utterance, it sends:
+
+- **`voice/speechStarted`**, `{"id": …, "startMs": …}`, once it is sure someone is speaking
+  (after `minSpeechMs` of speech). `startMs` is about where they started.
+- **`voice/heard`**, once they have paused for `endSilenceMs` and the node has transcribed what
+  they said: `id`, `text` (empty if no words were made out), `startMs` and `endMs` (where the
+  speech starts and ends), and `words` if asked for.
+
+Each `voice/speechStarted` is followed by one `voice/heard`, and an utterance's `voice/heard`
+comes before the next one's `voice/speechStarted`. When the audio ends (`end`), the node ends
+the utterance it is hearing, if any, as if the speaker had paused, sends its `voice/heard`,
+and answers the listen. The result is `durationMs`, how much audio it heard in all. A
+cancelled listen ([4.1](#41-cancelling-a-request)) drops whatever it was hearing: no
+`voice/heard` follows its answer.
+
+The audio is shortened here:
+
+```cnp
+→ {"jsonrpc": "2.0", "id": 30, "method": "voice/listen", "params": {"format": "pcmF32", "sampleRate": 16000, "endSilenceMs": 800}}
+→ {"jsonrpc": "2.0", "method": "voice/audio", "params": {"id": 30, "audio": "AAAAAAAAAAA="}}
+← {"jsonrpc": "2.0", "method": "voice/speechStarted", "params": {"id": 30, "startMs": 1240}}
+→ {"jsonrpc": "2.0", "method": "voice/audio", "params": {"id": 30, "audio": "AAAAAAAAAAA="}}
+← {"jsonrpc": "2.0", "method": "voice/heard", "params": {"id": 30, "text": "Knight to f3.", "startMs": 1210, "endMs": 2380}}
+→ {"jsonrpc": "2.0", "method": "voice/audio", "params": {"id": 30, "end": true}}
+← {"jsonrpc": "2.0", "id": 30, "result": {"durationMs": 4000}}
 ```
 
 ## 9. Errors
@@ -561,5 +630,7 @@ These names are reserved, so that nothing else uses them:
 ## 14. Changes
 
 - **1.0 (draft)**, 2026-10-21: the first version. Before it was final: `chess960` in a
-  position, so a Chess960 game says so. Its design came from Solrac, a chess board
-  that teaches, and cb2026, its engine.
+  position, so a Chess960 game says so; and listening (`listen`, `voice/listen`,
+  `voice/audio`, `voice/speechStarted`, `voice/heard`, and the purpose `listen`), so a player
+  can talk to Solrac without holding a button (cjus/chessgui#134). Its design came from
+  Solrac, a chess board that teaches, and cb2026, its engine.

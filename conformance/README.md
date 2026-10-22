@@ -16,7 +16,7 @@ conforms to CNP 1.0 if it passes every session that applies to it.
 | --- | --- | --- |
 | `lifecycle/` | `initialize`, `ping`, `shutdown`, `exit`, cancelling, and the errors around them (spec 4, 5, 9) | Every node |
 | `engine/` | Searches, stop and cancel, and each engine capability (spec 7) | Engine nodes |
-| `voice/` | Voices, models, and refusing bad requests (spec 8) | Voice nodes |
+| `voice/` | Voices, models, refusing bad requests, and audio for a listen that isn't there (spec 8) | Voice nodes |
 
 The voice sessions check only what doesn't need a model to be ready. A voice node's own tests
 check its speech and transcription.
