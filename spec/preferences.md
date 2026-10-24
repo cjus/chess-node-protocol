@@ -1,7 +1,7 @@
 # Preferences over CNP — draft 1
 
 This is a **proposed CNP extension**, submitted for review alongside chessdb PR #1. It is not an
-accepted addition to upstream CNP and current Solrac does not consume it. The chessdb implementation originally pinned `cnp` at
+accepted addition to upstream CNP. Solrac consumes it when chessdb is selected (cjus/chessgui#150). The chessdb implementation originally pinned `cnp` at
 `aaff14eff2d8ebef1f1c905cc5c301940188eed5` for envelopes,
 bounded line reading, version negotiation, lifecycle types and error codes. It does
 not introduce a second transport. Upstream CNP still specifies engine and voice only.
@@ -103,7 +103,9 @@ implemented. A production retention/epoch design remains needed.
 Inventory sources: remote Solrac `673a066db26ecae2383d4aaae39d9cb69f211c09`,
 `crates/app/src/settings.rs`, `core/src/clock.rs`, `core/src/strength.rs`, plus
 read-only inspection of the local branch at
-`c896c1f9efc8e803ba77aad0d769f4cf6484f9f2` (adds `camera.follow`).
+`c896c1f9efc8e803ba77aad0d769f4cf6484f9f2` (adds `camera.follow`), and Solrac `main` at
+`1e43ffa` (2026-10-24), which adds `board.environment` (cjus/chessgui#162) and the
+`panel` section (cjus/chessgui#151).
 No voice preference was present in those settings schemas. Unknown future settings
 abort import rather than disappear. Last-game/session state is outside this slice.
 
@@ -111,7 +113,9 @@ abort import rather than disappear. Last-game/session state is outside this slic
 | --- | --- |
 | window.width, window.height | integer, 1–32768 points |
 | board.labels, game.takebacks, sound.pieces, sound.clock, camera.follow | boolean |
+| panel.clock, panel.light, panel.sound, panel.chat | boolean |
 | board.clock_side | text, left/right |
+| board.environment | text, 1–64 lowercase letters, digits and hyphens (Solrac's sky id) |
 | game.time_control | text: none, minutes+increment, seconds s+increment, seconds s per move |
 | game.against_you, game.white_itself, game.black_itself | text: full, level unsigned-integer, rating unsigned-integer |
 | game.think_seconds, light.sun_lux, light.fill | finite number, 0–1,000,000 |
@@ -123,6 +127,9 @@ clamped during import. Original TOML, including comments, is retained in the
 migration record and the source file is untouched. An unsupported value or field
 aborts the whole import. Subsequent import of identical source is a no-op;
 different source or an already populated database requires reconciliation.
+
+A new key is a compatible change and keeps schema 1: an older node rejects it as an
+unknown key. Removing a key or changing its type needs a new schema version.
 
 ## Client integration still required
 
