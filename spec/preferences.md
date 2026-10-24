@@ -125,8 +125,10 @@ abort import rather than disappear. Last-game/session state is outside this slic
 These are storage validation bounds, not changed GUI slider ranges. No value is
 clamped during import. Original TOML, including comments, is retained in the
 migration record and the source file is untouched. An unsupported value or field
-aborts the whole import. Subsequent import of identical source is a no-op;
-different source or an already populated database requires reconciliation.
+aborts the whole import. Import happens once, into an empty store: once the store keeps
+preferences, imported or written, a later source is left unread and the store unchanged
+(cjus/chessdb#4). The database is then the authority, and a client may import on every
+start without a changed `settings.toml` stopping the node.
 
 A new key is a compatible change and keeps schema 1: an older node rejects it as an
 unknown key. Removing a key or changing its type needs a new schema version.
