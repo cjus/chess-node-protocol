@@ -67,6 +67,16 @@ fn requests_round_trip_through_their_methods() {
 
     let list: games::ListParams = serde_json::from_value(json!({})).unwrap();
     assert_eq!(list, games::ListParams::default());
+    // Without params, the newest page.
+    let bare: cnp::Message =
+        serde_json::from_str(r#"{"jsonrpc":"2.0","id":9,"method":"games/list"}"#).unwrap();
+    let cnp::Message::Request(bare) = bare else {
+        panic!("a request");
+    };
+    assert_eq!(
+        bare.params::<games::List>().unwrap(),
+        games::ListParams::default()
+    );
     let request = Request::new::<games::List>(2, &list);
     assert_eq!(request.method, "games/list");
     let page = games::ListParams {

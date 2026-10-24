@@ -244,8 +244,10 @@ impl RequestMethod for Save {
     type Result = Summary;
 }
 
-/// `games/list`'s params.
+/// `games/list`'s params. Both are optional, and so are the params themselves: a request
+/// without them asks for the newest page.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(from = "Option<ListFields>")]
 pub struct ListParams {
     /// How many games, 1 to [`MAX_LIST_LIMIT`]; [`DEFAULT_LIST_LIMIT`] if missing.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -254,6 +256,25 @@ pub struct ListParams {
     /// for the newest games.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub after: Option<String>,
+}
+
+/// [`ListParams`] as they are read, from an object or from nothing.
+#[derive(Default, Deserialize)]
+struct ListFields {
+    #[serde(default)]
+    limit: Option<u32>,
+    #[serde(default)]
+    after: Option<String>,
+}
+
+impl From<Option<ListFields>> for ListParams {
+    fn from(fields: Option<ListFields>) -> ListParams {
+        let fields = fields.unwrap_or_default();
+        ListParams {
+            limit: fields.limit,
+            after: fields.after,
+        }
+    }
 }
 
 /// `games/list`'s result.
