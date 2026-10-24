@@ -17,6 +17,8 @@ conforms to CNP 1.0 if it passes every session that applies to it.
 | `lifecycle/` | `initialize`, `ping`, `shutdown`, `exit`, cancelling, and the errors around them (spec 4, 5, 9) | Every node |
 | `engine/` | Searches, stop and cancel, and each engine capability (spec 7) | Engine nodes |
 | `voice/` | Voices, models, refusing bad requests, and audio for a listen that isn't there (spec 8) | Voice nodes |
+| `preferences/` | The draft preferences extension's read (`spec/preferences.md`) | Nodes that keep preferences |
+| `games/` | The draft games extension: a save, its retry, a reused version, get, list (`spec/games.md`) | Nodes that keep games |
 
 The voice sessions check only what doesn't need a model to be ready. A voice node's own tests
 check its speech and transcription.
