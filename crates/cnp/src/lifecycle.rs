@@ -157,6 +157,9 @@ pub struct Capabilities {
     /// Proposed draft preferences domain; clients must also check its initialize metadata.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub preferences: Option<crate::preferences::Capabilities>,
+    /// Proposed draft games domain (`games/…`); clients must also check its contract.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub games: Option<crate::games::Capabilities>,
     /// The engine domain (`engine/…`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub engine: Option<EngineCapabilities>,

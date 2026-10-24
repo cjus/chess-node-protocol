@@ -1,0 +1,25 @@
+{"session":"games-save-and-read","description":"draft-1 games: a save, its exact retry, a reused version refused, get, list, and the errors around them (spec/games.md)","requires":["games.read","games.write"]}
+{"send":{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocol":"1.0","client":{"name":"cnp-conformance","version":"1.0"}}}}
+{"expect":{"id":1,"result":{"capabilities":{"games":{"contract":"draft-1"}}}}}
+{"send":{"jsonrpc":"2.0","id":2,"method":"games/save","params":{"game":{"id":"cnp-conformance-game","version":1,"white":"White","black":"Black","result":"*","plies":2,"pgn":"[Event \"CNP conformance\"]\n\n1. e4 e5 *\n","players":{"white":"human","black":"engine"},"clock":{"control":"5+3","timesMs":[[300000,300000],[302000,300000],[302000,298500]]}}}}}
+{"expect":{"id":2,"result":{"id":"cnp-conformance-game","version":1,"white":"White","black":"Black","result":"*","plies":2,"createdAt":"$string","updatedAt":"$string"}}}
+{"comment":"The same save again is an exact retry: it changes nothing and answers with what is stored."}
+{"send":{"jsonrpc":"2.0","id":3,"method":"games/save","params":{"game":{"id":"cnp-conformance-game","version":1,"white":"White","black":"Black","result":"*","plies":2,"pgn":"[Event \"CNP conformance\"]\n\n1. e4 e5 *\n","players":{"white":"human","black":"engine"},"clock":{"control":"5+3","timesMs":[[300000,300000],[302000,300000],[302000,298500]]}}}}}
+{"expect":{"id":3,"result":{"id":"cnp-conformance-game","version":1}}}
+{"comment":"The same version with a different game is refused."}
+{"send":{"jsonrpc":"2.0","id":4,"method":"games/save","params":{"game":{"id":"cnp-conformance-game","version":1,"white":"White","black":"Black","result":"1-0","plies":2,"pgn":"[Event \"CNP conformance\"]\n\n1. e4 e5 1-0\n"}}}}
+{"expect":{"id":4,"error":{"code":-32021}}}
+{"send":{"jsonrpc":"2.0","id":5,"method":"games/get","params":{"id":"cnp-conformance-game"}}}
+{"expect":{"id":5,"result":{"game":{"id":"cnp-conformance-game","version":1,"result":"*","plies":2,"pgn":"[Event \"CNP conformance\"]\n\n1. e4 e5 *\n","players":{"white":"human","black":"engine"},"clock":{"control":"5+3"}},"createdAt":"$string","updatedAt":"$string"}}}
+{"send":{"jsonrpc":"2.0","id":6,"method":"games/list","params":{"limit":100}}}
+{"expect":{"id":6,"result":{"games":"$array"}}}
+{"send":{"jsonrpc":"2.0","id":7,"method":"games/get","params":{"id":"cnp-conformance-no-such-game"}}}
+{"expect":{"id":7,"error":{"code":-32025}}}
+{"send":{"jsonrpc":"2.0","id":8,"method":"games/save","params":{"game":{"id":"Not An Id","version":1,"white":"White","black":"Black","result":"*","plies":0,"pgn":"*"}}}}
+{"expect":{"id":8,"error":{"code":-32602}}}
+{"send":{"jsonrpc":"2.0","id":9,"method":"games/list","params":{"limit":0}}}
+{"expect":{"id":9,"error":{"code":-32602}}}
+{"send":{"jsonrpc":"2.0","id":10,"method":"shutdown"}}
+{"expect":{"id":10,"result":null}}
+{"send":{"jsonrpc":"2.0","method":"exit"}}
+{"expectExit":0}
