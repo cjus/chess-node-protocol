@@ -1,0 +1,22 @@
+{"session":"games-search","description":"draft-1 games: a query lists only the games whose names or tags have each of its words, never by their moves (spec/games.md, games/list)","requires":["games.read","games.write","games.search"]}
+{"send":{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocol":"1.0","client":{"name":"cnp-conformance","version":"1.0"}}}}
+{"expect":{"id":1,"result":{"capabilities":{"games":{"contract":"draft-1","search":true}}}}}
+{"send":{"jsonrpc":"2.0","id":2,"method":"games/save","params":{"game":{"id":"cnp-conformance-search","version":1,"white":"Cnpsearch White","black":"Black","result":"1-0","plies":2,"pgn":"[Event \"Cnpsearch-event Open\"]\n[White \"Cnpsearch White\"]\n[Black \"Black\"]\n\n1. e4 {cnpsearch-moves} e5 1-0\n"}}}}
+{"expect":{"id":2,"result":{"id":"cnp-conformance-search","version":1}}}
+{"comment":"Each word, ignoring case, in a player's name or in a tag's value."}
+{"send":{"jsonrpc":"2.0","id":3,"method":"games/list","params":{"query":"CNPSEARCH white"}}}
+{"expect":{"id":3,"result":{"games":[{"id":"cnp-conformance-search"}],"next":"$absent"}}}
+{"send":{"jsonrpc":"2.0","id":4,"method":"games/list","params":{"query":"cnpsearch-event"}}}
+{"expect":{"id":4,"result":{"games":[{"id":"cnp-conformance-search"}]}}}
+{"comment":"A word no name or tag has, or one only the moves have, matches nothing."}
+{"send":{"jsonrpc":"2.0","id":5,"method":"games/list","params":{"query":"cnpsearch-event nosuchplayer"}}}
+{"expect":{"id":5,"result":{"games":[]}}}
+{"send":{"jsonrpc":"2.0","id":6,"method":"games/list","params":{"query":"cnpsearch-moves"}}}
+{"expect":{"id":6,"result":{"games":[]}}}
+{"comment":"A query with no words is refused."}
+{"send":{"jsonrpc":"2.0","id":7,"method":"games/list","params":{"query":"   "}}}
+{"expect":{"id":7,"error":{"code":-32602}}}
+{"send":{"jsonrpc":"2.0","id":8,"method":"shutdown"}}
+{"expect":{"id":8,"result":null}}
+{"send":{"jsonrpc":"2.0","method":"exit"}}
+{"expectExit":0}
