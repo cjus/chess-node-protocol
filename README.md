@@ -31,7 +31,8 @@ first nodes are cb2026, Solrac's engine, and `solrac-voice`.
 [Draft-1 preferences](spec/preferences.md) and `cnp::preferences` add typed reads,
 revision-checked patches and durable retry receipts for review with chessdb.
 [Draft-1 games](spec/games.md) and `cnp::games` add a library of games a node keeps: saves
-that are safe to repeat, a list newest first, and a game read back whole. These are
+that are safe to repeat, a list newest first that can be searched by the players' names and
+the PGN's tags, and a game read back whole. These are
 proposals, not released CNP domains.
 
 ## Using it

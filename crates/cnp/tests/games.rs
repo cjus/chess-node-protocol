@@ -24,11 +24,15 @@ fn game() -> games::Game {
 
 #[test]
 fn the_capability_names_its_contract_and_older_nodes_have_none() {
-    let value = json!({"protocol":"1.0","node":{"name":"chessdb","version":"0.1","license":"LicenseRef-Proprietary"},"capabilities":{"preferences":{"read":true,"write":true},"games":{"read":true,"write":true,"contract":"draft-1","future":1}},"limits":{"maxMessageBytes":65536}});
+    let value = json!({"protocol":"1.0","node":{"name":"chessdb","version":"0.1","license":"LicenseRef-Proprietary"},"capabilities":{"preferences":{"read":true,"write":true},"games":{"read":true,"write":true,"search":true,"contract":"draft-1","future":1}},"limits":{"maxMessageBytes":65536}});
     let result: lifecycle::InitializeResult = serde_json::from_value(value).unwrap();
     let games = result.capabilities.games.unwrap();
-    assert!(games.read && games.write);
+    assert!(games.read && games.write && games.search);
     assert_eq!(games.contract.as_deref(), Some(games::CONTRACT));
+    // A node from before searching doesn't say it searches.
+    let unsearched: games::Capabilities =
+        serde_json::from_value(json!({"read":true,"write":true,"contract":"draft-1"})).unwrap();
+    assert!(!unsearched.search);
     let older: lifecycle::InitializeResult = serde_json::from_value(
         json!({"protocol":"1.0","node":{"name":"chessdb","version":"0.1","license":"x"},"capabilities":{"preferences":{"read":true}}}),
     )
@@ -82,7 +86,12 @@ fn requests_round_trip_through_their_methods() {
     let page = games::ListParams {
         limit: Some(5),
         after: Some("cursor".into()),
+        query: Some("Carlsen 2019".into()),
     };
+    assert_eq!(
+        serde_json::to_value(&page).unwrap(),
+        json!({"limit":5,"after":"cursor","query":"Carlsen 2019"})
+    );
     assert_eq!(
         Request::new::<games::List>(3, &page)
             .params::<games::List>()
@@ -163,4 +172,51 @@ fn the_largest_game_fits_one_message() {
     escaped.plies = plies;
     escaped.clock = stored.game.clock.clone();
     assert!(escaped.validate().is_err());
+}
+
+#[test]
+fn a_query_has_words_and_keeps_within_its_bounds() {
+    assert!(games::valid_query("Carlsen"));
+    assert!(games::valid_query(" Carlsen  2019 "));
+    assert!(games::valid_query(&"q".repeat(games::MAX_QUERY_BYTES)));
+    for bad in ["", "   ", "a\nb", &"q".repeat(games::MAX_QUERY_BYTES + 1)] {
+        assert!(!games::valid_query(bad), "{bad:?}");
+    }
+}
+
+#[test]
+fn a_query_matches_names_and_tags_but_not_moves() {
+    let pgn = "[Event \"Rapid \\\"Open\\\"\"]\n[Site \"Oslo NOR\"]\n[Date \"2019.06.04\"]\n\
+               [White \"Carlsen, Magnus\"]\n\n1. e4 {Najdorf next} c5 *\n";
+    assert_eq!(
+        games::tag_values(pgn),
+        [
+            "Rapid \"Open\"",
+            "Oslo NOR",
+            "2019.06.04",
+            "Carlsen, Magnus"
+        ]
+    );
+    let matches = |query| games::matches(query, "Carlsen, Magnus", "Player", pgn);
+    // Every word, ignoring case, in a name or a tag's value.
+    assert!(matches("carlsen"));
+    assert!(matches("MAGNUS oslo"));
+    assert!(matches("2019.06 \"open\""));
+    assert!(matches("play"));
+    // A word nowhere, or only in the moves, doesn't match.
+    assert!(!matches("carlsen tal"));
+    assert!(!matches("najdorf"));
+    assert!(!matches("e4"));
+    // Case is Unicode's.
+    assert!(games::matches("ÉLODIE", "Élodie", "B", "*"));
+    // Tags several to a line, or none, or broken.
+    assert_eq!(
+        games::tag_values("[Event \"A\"][Site \"B\"] 1. e4 *"),
+        ["A", "B"]
+    );
+    assert!(games::tag_values("1. e4 e5 *").is_empty());
+    assert_eq!(
+        games::tag_values("[Event \"A\"]\n[Round]\n[Site \"B\"]"),
+        ["A"]
+    );
 }

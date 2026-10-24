@@ -14,6 +14,11 @@
 //! that what is stored is newer than what it sent. The same version with a different game is
 //! refused ([`VERSION_REUSED`]).
 //!
+//! **Searching.** A node that can search ([`Capabilities::search`]) lists only the games that
+//! match a query ([`ListParams::query`]): each of its words, ignoring case, in a player's name
+//! or in one of the values of the PGN's tags, such as its event, site or date ([`matches()`]).
+//! The moves aren't searched.
+//!
 //! **Pitfall: one message holds a whole game.** A node serving games reads messages of at
 //! least [`MESSAGE_BYTES`] (64 KiB, chessdb's limit), so a game is bounded
 //! ([`MAX_GAME_BYTES`], [`MAX_PGN_BYTES`], [`MAX_PLIES`]) with room left for the envelope of
@@ -48,6 +53,8 @@ pub const MAX_GAME_BYTES: usize = 60 * 1024;
 pub const DEFAULT_LIST_LIMIT: u32 = 20;
 /// The most games one [`List`] returns.
 pub const MAX_LIST_LIMIT: u32 = 100;
+/// The longest query, in bytes.
+pub const MAX_QUERY_BYTES: usize = 128;
 /// No change: the version was already saved with a different game.
 pub const VERSION_REUSED: i64 = -32021;
 /// Storage failed; the outcome can be uncertain, so retry the exact save.
@@ -65,6 +72,10 @@ pub struct Capabilities {
     /// `games/save` is available.
     #[serde(default)]
     pub write: bool,
+    /// `games/list` takes a [`ListParams::query`]. A node without it ignores the query and
+    /// lists every game, so a client sends one only to a node that searches.
+    #[serde(default)]
+    pub search: bool,
     /// The contract the node implements, [`CONTRACT`]; absent means don't send games
     /// requests.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -201,6 +212,63 @@ pub fn valid_id(id: &str) -> bool {
             .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
 }
 
+/// Whether `query` is a valid [`ListParams::query`]: 1 to [`MAX_QUERY_BYTES`] bytes, without
+/// control characters, with at least one word.
+pub fn valid_query(query: &str) -> bool {
+    valid_text(query, MAX_QUERY_BYTES) && query.split_whitespace().next().is_some()
+}
+
+/// Whether a game matches `query`, as a node that searches decides it: each of the query's
+/// words (split at whitespace), ignoring case, is part of White's or Black's name or of one of
+/// the values of the PGN's tags ([`tag_values`]). The moves aren't searched.
+pub fn matches(query: &str, white: &str, black: &str, pgn: &str) -> bool {
+    let texts: Vec<String> = [white.to_string(), black.to_string()]
+        .into_iter()
+        .chain(tag_values(pgn))
+        .map(|text| text.to_lowercase())
+        .collect();
+    query.split_whitespace().all(|word| {
+        let word = word.to_lowercase();
+        texts.iter().any(|text| text.contains(&word))
+    })
+}
+
+/// The values of the tag pairs at the head of `pgn`, such as `Solrac game` from
+/// `[Event "Solrac game"]`, unescaped (`\"` and `\\`). They end where the moves start; a
+/// malformed pair ends them too.
+pub fn tag_values(pgn: &str) -> Vec<String> {
+    let mut values = Vec::new();
+    let mut chars = pgn.chars().peekable();
+    loop {
+        while chars.next_if(|c| c.is_whitespace()).is_some() {}
+        if chars.next_if_eq(&'[').is_none() {
+            return values;
+        }
+        // The tag's name, up to its value's opening quote.
+        loop {
+            match chars.next() {
+                Some('"') => break,
+                Some(']') | None => return values,
+                Some(_) => {}
+            }
+        }
+        let mut value = String::new();
+        loop {
+            match chars.next() {
+                Some('\\') => value.extend(chars.next()),
+                Some('"') => break,
+                Some(c) => value.push(c),
+                None => return values,
+            }
+        }
+        values.push(value);
+        // Up to the pair's closing bracket.
+        if !chars.by_ref().any(|c| c == ']') {
+            return values;
+        }
+    }
+}
+
 fn valid_text(text: &str, max: usize) -> bool {
     (1..=max).contains(&text.len()) && !text.chars().any(char::is_control)
 }
@@ -244,18 +312,22 @@ impl RequestMethod for Save {
     type Result = Summary;
 }
 
-/// `games/list`'s params. Both are optional, and so are the params themselves: a request
-/// without them asks for the newest page.
+/// `games/list`'s params. Each is optional, and so are the params themselves: a request
+/// without them asks for the newest page of every game.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(from = "Option<ListFields>")]
 pub struct ListParams {
     /// How many games, 1 to [`MAX_LIST_LIMIT`]; [`DEFAULT_LIST_LIMIT`] if missing.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub limit: Option<u32>,
-    /// Where the last page ended: its [`ListResult::next`], passed back unchanged. Missing
-    /// for the newest games.
+    /// Where the last page ended: its [`ListResult::next`], passed back unchanged with the
+    /// same query. Missing for the newest games.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub after: Option<String>,
+    /// Only the games that match these words ([`matches()`], [`valid_query`]). Missing for
+    /// every game. Sent only to a node that searches ([`Capabilities::search`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub query: Option<String>,
 }
 
 /// [`ListParams`] as they are read, from an object or from nothing.
@@ -265,6 +337,8 @@ struct ListFields {
     limit: Option<u32>,
     #[serde(default)]
     after: Option<String>,
+    #[serde(default)]
+    query: Option<String>,
 }
 
 impl From<Option<ListFields>> for ListParams {
@@ -273,6 +347,7 @@ impl From<Option<ListFields>> for ListParams {
         ListParams {
             limit: fields.limit,
             after: fields.after,
+            query: fields.query,
         }
     }
 }

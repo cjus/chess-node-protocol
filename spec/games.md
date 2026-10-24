@@ -18,10 +18,13 @@ the moves.
 Initialize's `capabilities` names the domain, with its contract:
 
 ```json
-{"capabilities": {"games": {"read": true, "write": true, "contract": "draft-1"}}}
+{"capabilities": {"games": {"read": true, "write": true, "search": true, "contract": "draft-1"}}}
 ```
 
-`read` offers `games/list` and `games/get`, and `write` offers `games/save`. A client sends
+`read` offers `games/list` and `games/get`, `write` offers `games/save`, and `search` says
+that `games/list` takes a `query`. A missing switch is false: a node without `search` ignores
+a query, as it ignores any unknown field, and lists every game, so a client sends a query only
+to a node that searches. A client sends
 games requests only to a node whose `contract` is `draft-1`, and a node serving games reads
 messages of at least 64 KiB (`limits.maxMessageBytes` of 65,536 or more), which the bounds
 below are made for. A node without the domain answers
@@ -94,18 +97,26 @@ uncertain: retry the exact save.
 ### `games/list`
 
 ```json
-{"limit": 20, "after": "opaque cursor"}
+{"limit": 20, "after": "opaque cursor", "query": "carlsen 2019"}
 ```
 
-Both are optional: `limit` is 1–100 and 20 when missing, and `after` is the `next` of the page
-before, passed back unchanged. Answers with the games the most recently changed first (by
-`updatedAt`, then `id`), as summaries:
+Each is optional: `limit` is 1–100 and 20 when missing, `after` is the `next` of the page
+before, passed back unchanged with the same query, and `query`, for a node that searches,
+lists only the games that match it. Answers with the games the most recently changed first
+(by `updatedAt`, then `id`), as summaries:
 
 ```json
 {"games": [ ... summaries ... ], "next": "opaque cursor"}
 ```
 
 `next` is missing on the last page. A cursor that isn't one the node gave is Invalid params.
+
+A **query** is 1–128 bytes, with no control characters and at least one word (words are split
+at whitespace). A game matches it when each word, ignoring case (Unicode's lowercase), is part
+of White's or Black's name or of the value of one of the tag pairs that start its PGN, such as
+`[Event "Rapid Open"]` or `[Date "2019.06.04"]` (`\"` and `\\` in a value read as `"` and `\`).
+The moves, and their comments, aren't searched. A query out of bounds is Invalid params.
+`cnp::games::matches` is the rule as code.
 
 ### `games/get`
 
@@ -126,7 +137,7 @@ An identity the node doesn't keep is error -32025 (not found).
 
 | Error | Meaning | Client action |
 | --- | --- | --- |
-| -32602 | Invalid params: a game, limit, cursor or identity out of bounds | Correct the request |
+| -32602 | Invalid params: a game, limit, cursor, query or identity out of bounds | Correct the request |
 | -32013 | Busy: another storage request is active | Retry with backoff |
 | -32021 | The version was already saved with a different game | A programming error: save above the stored version, never over it |
 | -32022 | Storage or I/O failed; the outcome can be uncertain | Keep the game; retry the exact save |
@@ -135,6 +146,6 @@ An identity the node doesn't keep is error -32025 (not found).
 
 ## Not in draft 1
 
-Deleting games, importing PGN files of many games, searching games or positions, and the
+Deleting games, importing PGN files of many games, searching by moves or positions, and the
 positions of each game are later work. A node that adds them adds methods or capabilities,
 and an older client ignores them.
