@@ -1,6 +1,17 @@
-{"session":"games-import","description":"draft-1 games: an import saves a batch in one commit and says what it did with each game; a repeat keeps them; a batch out of bounds saves nothing (spec/games.md, games/import)","requires":["games.read","games.write","games.import"]}
+{"session":"games-import","description":"draft-1 games: an import saves a batch in one commit and says what it did with each game; a repeat keeps them; a batch out of bounds saves nothing (spec/games.md, games/import)","requires":["games.read","games.write","games.import","games.delete"]}
 {"send":{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocol":"1.0","client":{"name":"cnp-conformance","version":"1.0"}}}}
 {"expect":{"id":1,"result":{"capabilities":{"games":{"contract":"draft-1","import":true}}}}}
+{"comment":"Games an earlier run against the same node left: gone, whether they were there or not."}
+{"send":{"jsonrpc":"2.0","id":100,"method":"games/delete","params":{"id":"cnp-conformance-import-a"}}}
+{"expect":{"id":100}}
+{"send":{"jsonrpc":"2.0","id":101,"method":"games/delete","params":{"id":"cnp-conformance-import-b"}}}
+{"expect":{"id":101}}
+{"send":{"jsonrpc":"2.0","id":102,"method":"games/delete","params":{"id":"cnp-conformance-import-c"}}}
+{"expect":{"id":102}}
+{"send":{"jsonrpc":"2.0","id":103,"method":"games/delete","params":{"id":"cnp-conformance-import-d"}}}
+{"expect":{"id":103}}
+{"send":{"jsonrpc":"2.0","id":104,"method":"games/delete","params":{"id":"cnp-conformance-import-e"}}}
+{"expect":{"id":104}}
 {"send":{"jsonrpc":"2.0","id":2,"method":"games/save","params":{"game":{"id":"cnp-conformance-import-b","version":2,"white":"Saved","black":"Before","result":"*","plies":0,"pgn":"*"}}}}
 {"expect":{"id":2,"result":{"id":"cnp-conformance-import-b","version":2}}}
 {"send":{"jsonrpc":"2.0","id":3,"method":"games/import","params":{"games":[{"id":"cnp-conformance-import-a","version":1,"white":"Morphy","black":"Duke","result":"1-0","plies":33,"pgn":"[White \"Morphy\"]\n[Black \"Duke\"]\n\n1. e4 e5 1-0"},{"id":"cnp-conformance-import-b","version":1,"white":"Older","black":"Version","result":"*","plies":0,"pgn":"*"},{"id":"cnp-conformance-import-c","version":1,"white":"Anderssen","black":"Kieseritzky","result":"1-0","plies":45,"pgn":"[White \"Anderssen\"]\n\n1. e4 e5 1-0"}]}}}
