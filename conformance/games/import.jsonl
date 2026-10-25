@@ -1,0 +1,29 @@
+{"session":"games-import","description":"draft-1 games: an import saves a batch in one commit and says what it did with each game; a repeat keeps them; a batch out of bounds saves nothing (spec/games.md, games/import)","requires":["games.read","games.write","games.import"]}
+{"send":{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocol":"1.0","client":{"name":"cnp-conformance","version":"1.0"}}}}
+{"expect":{"id":1,"result":{"capabilities":{"games":{"contract":"draft-1","import":true}}}}}
+{"send":{"jsonrpc":"2.0","id":2,"method":"games/save","params":{"game":{"id":"cnp-conformance-import-b","version":2,"white":"Saved","black":"Before","result":"*","plies":0,"pgn":"*"}}}}
+{"expect":{"id":2,"result":{"id":"cnp-conformance-import-b","version":2}}}
+{"send":{"jsonrpc":"2.0","id":3,"method":"games/import","params":{"games":[{"id":"cnp-conformance-import-a","version":1,"white":"Morphy","black":"Duke","result":"1-0","plies":33,"pgn":"[White \"Morphy\"]\n[Black \"Duke\"]\n\n1. e4 e5 1-0"},{"id":"cnp-conformance-import-b","version":1,"white":"Older","black":"Version","result":"*","plies":0,"pgn":"*"},{"id":"cnp-conformance-import-c","version":1,"white":"Anderssen","black":"Kieseritzky","result":"1-0","plies":45,"pgn":"[White \"Anderssen\"]\n\n1. e4 e5 1-0"}]}}}
+{"expect":{"id":3,"result":{"games":["saved","kept","saved"]}}}
+{"send":{"jsonrpc":"2.0","id":4,"method":"games/get","params":{"id":"cnp-conformance-import-a"}}}
+{"expect":{"id":4,"result":{"game":{"id":"cnp-conformance-import-a","version":1,"white":"Morphy","plies":33}}}}
+{"comment":"The stored version 2 stays: the import's older version 1 was kept out."}
+{"send":{"jsonrpc":"2.0","id":5,"method":"games/get","params":{"id":"cnp-conformance-import-b"}}}
+{"expect":{"id":5,"result":{"game":{"version":2,"white":"Saved"}}}}
+{"comment":"Repeating the batch, as after a lost answer, changes nothing."}
+{"send":{"jsonrpc":"2.0","id":6,"method":"games/import","params":{"games":[{"id":"cnp-conformance-import-a","version":1,"white":"Morphy","black":"Duke","result":"1-0","plies":33,"pgn":"[White \"Morphy\"]\n[Black \"Duke\"]\n\n1. e4 e5 1-0"}]}}}
+{"expect":{"id":6,"result":{"games":["kept"]}}}
+{"comment":"The same version with a different game is refused, and the batch's other game saved."}
+{"send":{"jsonrpc":"2.0","id":7,"method":"games/import","params":{"games":[{"id":"cnp-conformance-import-a","version":1,"white":"Someone","black":"Else","result":"0-1","plies":2,"pgn":"1. f3 e5 0-1"},{"id":"cnp-conformance-import-d","version":1,"white":"D","black":"D","result":"*","plies":0,"pgn":"*"}]}}}
+{"expect":{"id":7,"result":{"games":["refused","saved"]}}}
+{"comment":"A batch with an identity twice saves nothing: e stays unknown."}
+{"send":{"jsonrpc":"2.0","id":8,"method":"games/import","params":{"games":[{"id":"cnp-conformance-import-e","version":1,"white":"E","black":"E","result":"*","plies":0,"pgn":"*"},{"id":"cnp-conformance-import-e","version":2,"white":"E","black":"E","result":"*","plies":0,"pgn":"*"}]}}}
+{"expect":{"id":8,"error":{"code":-32602}}}
+{"send":{"jsonrpc":"2.0","id":9,"method":"games/get","params":{"id":"cnp-conformance-import-e"}}}
+{"expect":{"id":9,"error":{"code":-32025}}}
+{"send":{"jsonrpc":"2.0","id":10,"method":"games/import","params":{"games":[]}}}
+{"expect":{"id":10,"error":{"code":-32602}}}
+{"send":{"jsonrpc":"2.0","id":11,"method":"shutdown"}}
+{"expect":{"id":11,"result":null}}
+{"send":{"jsonrpc":"2.0","method":"exit"}}
+{"expectExit":0}

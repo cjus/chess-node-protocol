@@ -32,7 +32,7 @@ first nodes are cb2026, Solrac's engine, and `solrac-voice`.
 revision-checked patches and durable retry receipts for review with chessdb.
 [Draft-1 games](spec/games.md) and `cnp::games` add a library of games a node keeps: saves
 that are safe to repeat, a list newest first that can be searched by the players' names and
-the PGN's tags, a game read back whole, and a game deleted. These are
+the PGN's tags, a game read back whole, a game deleted, and games imported in batches. These are
 proposals, not released CNP domains.
 
 ## Using it
