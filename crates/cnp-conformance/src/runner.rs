@@ -20,7 +20,7 @@ use cnp::stdio::{ReadError, read_message};
 use cnp::{Message, Request};
 use serde_json::{Value, json};
 
-use crate::pattern::{Bindings, matches};
+use crate::pattern::{Bindings, fill, matches};
 use crate::session::{Session, Step};
 
 /// The longest message the runner reads from a node: well above any node's needs.
@@ -239,7 +239,9 @@ pub fn run_session(session: &Session, command: &[String]) -> Outcome {
     let mut bindings = Bindings::new();
     for (n, step) in session.steps.iter().enumerate() {
         let result = match step {
-            Step::Send(message) => node.send_line(&message.to_string()),
+            Step::Send(message) => {
+                fill(message, &bindings).and_then(|message| node.send_line(&message.to_string()))
+            }
             Step::SendRaw(text) => node.send_line(text),
             Step::Expect(pattern) => node.expect(pattern, &mut bindings, session.timeout),
             Step::ExpectAll(patterns) => node.expect_all(patterns, &mut bindings, session.timeout),

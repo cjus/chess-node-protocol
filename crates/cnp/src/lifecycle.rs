@@ -160,6 +160,9 @@ pub struct Capabilities {
     /// Proposed draft games domain (`games/…`); clients must also check its contract.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub games: Option<crate::games::Capabilities>,
+    /// Proposed draft backups domain (`backups/…`); clients must also check its contract.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub backups: Option<crate::backups::Capabilities>,
     /// The engine domain (`engine/…`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub engine: Option<EngineCapabilities>,
