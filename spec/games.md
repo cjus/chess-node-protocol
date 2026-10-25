@@ -18,11 +18,12 @@ the moves.
 Initialize's `capabilities` names the domain, with its contract:
 
 ```json
-{"capabilities": {"games": {"read": true, "write": true, "search": true, "contract": "draft-1"}}}
+{"capabilities": {"games": {"read": true, "write": true, "search": true, "delete": true,
+ "contract": "draft-1"}}}
 ```
 
-`read` offers `games/list` and `games/get`, `write` offers `games/save`, and `search` says
-that `games/list` takes a `query`. A missing switch is false: a node without `search` ignores
+`read` offers `games/list` and `games/get`, `write` offers `games/save`, `search` says
+that `games/list` takes a `query`, and `delete` offers `games/delete`. A missing switch is false: a node without `search` ignores
 a query, as it ignores any unknown field, and lists every game, so a client sends a query only
 to a node that searches. A client sends
 games requests only to a node whose `contract` is `draft-1`, and a node serving games reads
@@ -133,6 +134,23 @@ Answers with the game as it was last saved, and its timestamps:
 
 An identity the node doesn't keep is error -32025 (not found).
 
+### `games/delete`
+
+```json
+{"id": "5f0c2a9e7b1d4c3a8e6f0b2d1c3a4e5f"}
+```
+
+For a node whose capability says `delete`. Deletes the game, every version of it, and
+answers after the commit, as a save does:
+
+```json
+{"id": "5f0c2a9e7b1d4c3a8e6f0b2d1c3a4e5f"}
+```
+
+An identity the node doesn't keep is -32025, so a client that retries after losing the
+answer finds the game gone and can take that as done. A save of the same identity afterwards
+stores it again, as a new game: a client deletes only a game it is no longer saving.
+
 ## Errors
 
 | Error | Meaning | Client action |
@@ -141,11 +159,11 @@ An identity the node doesn't keep is error -32025 (not found).
 | -32013 | Busy: another storage request is active | Retry with backoff |
 | -32021 | The version was already saved with a different game | A programming error: save above the stored version, never over it |
 | -32022 | Storage or I/O failed; the outcome can be uncertain | Keep the game; retry the exact save |
-| -32025 | No game with that identity | Refresh the list |
+| -32025 | No game with that identity | Refresh the list; for a delete, it is already gone |
 | -32800 | Cancelled before the commit | Nothing was saved by this attempt |
 
 ## Not in draft 1
 
-Deleting games, importing PGN files of many games, searching by moves or positions, and the
-positions of each game are later work. A node that adds them adds methods or capabilities,
+Importing PGN files of many games, searching by moves or positions, and the positions of each
+game are later work. A node that adds them adds methods or capabilities,
 and an older client ignores them.

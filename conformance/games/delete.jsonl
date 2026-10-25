@@ -1,0 +1,18 @@
+{"session":"games-delete","description":"draft-1 games: a deleted game is gone, and deleting it again is not found (spec/games.md, games/delete)","requires":["games.read","games.write","games.delete"]}
+{"send":{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocol":"1.0","client":{"name":"cnp-conformance","version":"1.0"}}}}
+{"expect":{"id":1,"result":{"capabilities":{"games":{"contract":"draft-1","delete":true}}}}}
+{"send":{"jsonrpc":"2.0","id":2,"method":"games/save","params":{"game":{"id":"cnp-conformance-delete","version":1,"white":"White","black":"Black","result":"*","plies":0,"pgn":"*"}}}}
+{"expect":{"id":2,"result":{"id":"cnp-conformance-delete","version":1}}}
+{"send":{"jsonrpc":"2.0","id":3,"method":"games/delete","params":{"id":"cnp-conformance-delete"}}}
+{"expect":{"id":3,"result":{"id":"cnp-conformance-delete"}}}
+{"send":{"jsonrpc":"2.0","id":4,"method":"games/get","params":{"id":"cnp-conformance-delete"}}}
+{"expect":{"id":4,"error":{"code":-32025}}}
+{"comment":"Deleting it again finds it gone: a retry after a lost answer can take that as done."}
+{"send":{"jsonrpc":"2.0","id":5,"method":"games/delete","params":{"id":"cnp-conformance-delete"}}}
+{"expect":{"id":5,"error":{"code":-32025}}}
+{"send":{"jsonrpc":"2.0","id":6,"method":"games/delete","params":{"id":"Not An Id"}}}
+{"expect":{"id":6,"error":{"code":-32602}}}
+{"send":{"jsonrpc":"2.0","id":7,"method":"shutdown"}}
+{"expect":{"id":7,"result":null}}
+{"send":{"jsonrpc":"2.0","method":"exit"}}
+{"expectExit":0}

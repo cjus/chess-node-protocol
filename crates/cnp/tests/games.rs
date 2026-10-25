@@ -24,15 +24,15 @@ fn game() -> games::Game {
 
 #[test]
 fn the_capability_names_its_contract_and_older_nodes_have_none() {
-    let value = json!({"protocol":"1.0","node":{"name":"chessdb","version":"0.1","license":"LicenseRef-Proprietary"},"capabilities":{"preferences":{"read":true,"write":true},"games":{"read":true,"write":true,"search":true,"contract":"draft-1","future":1}},"limits":{"maxMessageBytes":65536}});
+    let value = json!({"protocol":"1.0","node":{"name":"chessdb","version":"0.1","license":"LicenseRef-Proprietary"},"capabilities":{"preferences":{"read":true,"write":true},"games":{"read":true,"write":true,"search":true,"delete":true,"contract":"draft-1","future":1}},"limits":{"maxMessageBytes":65536}});
     let result: lifecycle::InitializeResult = serde_json::from_value(value).unwrap();
     let games = result.capabilities.games.unwrap();
-    assert!(games.read && games.write && games.search);
+    assert!(games.read && games.write && games.search && games.delete);
     assert_eq!(games.contract.as_deref(), Some(games::CONTRACT));
     // A node from before searching doesn't say it searches.
     let unsearched: games::Capabilities =
         serde_json::from_value(json!({"read":true,"write":true,"contract":"draft-1"})).unwrap();
-    assert!(!unsearched.search);
+    assert!(!unsearched.search && !unsearched.delete);
     let older: lifecycle::InitializeResult = serde_json::from_value(
         json!({"protocol":"1.0","node":{"name":"chessdb","version":"0.1","license":"x"},"capabilities":{"preferences":{"read":true}}}),
     )
@@ -106,6 +106,14 @@ fn requests_round_trip_through_their_methods() {
         Request::new::<games::Get>(4, &get).method,
         "games/get".to_string()
     );
+    let delete = games::DeleteParams {
+        id: "a-game".into(),
+    };
+    let request = Request::new::<games::Delete>(5, &delete);
+    assert_eq!(request.method, "games/delete");
+    assert_eq!(request.params::<games::Delete>().unwrap(), delete);
+    let deleted: games::Deleted = serde_json::from_value(json!({"id":"a-game"})).unwrap();
+    assert_eq!(deleted.id, "a-game");
 
     let summary = json!({"id":"a","version":2,"white":"A","black":"B","result":"0-1","plies":40,"createdAt":"2026-10-24T14:05:12.123Z","updatedAt":"2026-10-24T14:31:40.002Z"});
     let listed: games::ListResult =
