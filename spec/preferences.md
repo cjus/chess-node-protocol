@@ -79,6 +79,12 @@ The wire map uses application-defined string keys; the Solrac schema below defin
 which keys and values a node accepts. Unknown fields on request/result objects are
 ignored; unknown preference keys are rejected, not silently discarded.
 
+A node may find a stored setting it doesn't know, written by a newer node of the same
+schema. It keeps that setting stored as it is, through its own writes, and leaves it out
+of the snapshots it returns, since its clients don't know it either; it doesn't refuse to
+open the store. A patch naming such a key is still rejected. A key the node knows is
+checked when read from storage as when written.
+
 A success is emitted only after FULL-synchronous SQLite commit (`fullfsync` is
 also enabled where supported). The transaction records the canonical request and
 its original result alongside the preference changes. An exact retry with the
@@ -137,8 +143,10 @@ preferences, imported or written, a later source is left unread and the store un
 (cjus/chessdb#4). The database is then the authority, and a client may import on every
 start without a changed `settings.toml` stopping the node.
 
-A new key is a compatible change and keeps schema 1: an older node rejects it as an
-unknown key. Removing a key or changing its type needs a new schema version.
+A new key is a compatible change and keeps schema 1: an older node rejects it in a patch,
+as an unknown key, and keeps it, unseen, when it finds it stored (above; chessdb from
+cjus/chessdb#9). Removing a key, changing its type or narrowing the values it accepts
+needs a new schema version.
 
 ## Client integration still required
 
