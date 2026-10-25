@@ -19,11 +19,12 @@ Initialize's `capabilities` names the domain, with its contract:
 
 ```json
 {"capabilities": {"games": {"read": true, "write": true, "search": true, "delete": true,
- "contract": "draft-1"}}}
+ "import": true, "contract": "draft-1"}}}
 ```
 
 `read` offers `games/list` and `games/get`, `write` offers `games/save`, `search` says
-that `games/list` takes a `query`, and `delete` offers `games/delete`. A missing switch is false: a node without `search` ignores
+that `games/list` takes a `query`, `delete` offers `games/delete`, and `import` offers
+`games/import`. A missing switch is false: a node without `search` ignores
 a query, as it ignores any unknown field, and lists every game, so a client sends a query only
 to a node that searches. A client sends
 games requests only to a node whose `contract` is `draft-1`, and a node serving games reads
@@ -151,11 +152,39 @@ An identity the node doesn't keep is -32025, so a client that retries after losi
 answer finds the game gone and can take that as done. A save of the same identity afterwards
 stores it again, as a new game: a client deletes only a game it is no longer saving.
 
+### `games/import`
+
+```json
+{"games": [{ ... a game ... }, { ... a game ... }]}
+```
+
+For a node whose capability says `import`. Saves every game in **one commit**, each as
+`games/save` would, and answers after the commit with what it did with each, in the order
+sent:
+
+```json
+{"games": ["saved", "kept", "saved"]}
+```
+
+| Answer | What happened |
+| --- | --- |
+| `saved` | Stored: nothing had this `id`, or a lower version did, which it replaced |
+| `kept` | Nothing: this version of the same game, or a higher version, is stored |
+| `refused` | Nothing: this version was saved with a different game (-32021, for a save) |
+
+A batch is 1–100 games, no `id` twice, and its games together are at most 61,440 bytes as
+JSON, each counted as for one game: so a batch fits the message one game does. A batch
+outside these bounds, or with a game outside a game's, saves nothing: Invalid params
+(-32602). A file of thousands of games is imported batch by batch, so a node commits once
+a batch, not once a game (a durable commit waits for the disk). Repeating a batch is
+harmless, as repeating a save is: after a lost answer, retry it exactly. `cnp::games::Batcher`
+gathers a client's games into batches that keep within the bounds.
+
 ## Errors
 
 | Error | Meaning | Client action |
 | --- | --- | --- |
-| -32602 | Invalid params: a game, limit, cursor, query or identity out of bounds | Correct the request |
+| -32602 | Invalid params: a game, batch, limit, cursor, query or identity out of bounds | Correct the request |
 | -32013 | Busy: another storage request is active | Retry with backoff |
 | -32021 | The version was already saved with a different game | A programming error: save above the stored version, never over it |
 | -32022 | Storage or I/O failed; the outcome can be uncertain | Keep the game; retry the exact save |
@@ -164,6 +193,5 @@ stores it again, as a new game: a client deletes only a game it is no longer sav
 
 ## Not in draft 1
 
-Importing PGN files of many games, searching by moves or positions, and the positions of each
-game are later work. A node that adds them adds methods or capabilities,
+Searching by moves or positions, and the positions of each game, are later work. A node that adds them adds methods or capabilities,
 and an older client ignores them.

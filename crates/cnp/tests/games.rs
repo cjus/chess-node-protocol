@@ -24,15 +24,15 @@ fn game() -> games::Game {
 
 #[test]
 fn the_capability_names_its_contract_and_older_nodes_have_none() {
-    let value = json!({"protocol":"1.0","node":{"name":"chessdb","version":"0.1","license":"LicenseRef-Proprietary"},"capabilities":{"preferences":{"read":true,"write":true},"games":{"read":true,"write":true,"search":true,"delete":true,"contract":"draft-1","future":1}},"limits":{"maxMessageBytes":65536}});
+    let value = json!({"protocol":"1.0","node":{"name":"chessdb","version":"0.1","license":"LicenseRef-Proprietary"},"capabilities":{"preferences":{"read":true,"write":true},"games":{"read":true,"write":true,"search":true,"delete":true,"import":true,"contract":"draft-1","future":1}},"limits":{"maxMessageBytes":65536}});
     let result: lifecycle::InitializeResult = serde_json::from_value(value).unwrap();
     let games = result.capabilities.games.unwrap();
-    assert!(games.read && games.write && games.search && games.delete);
+    assert!(games.read && games.write && games.search && games.delete && games.import);
     assert_eq!(games.contract.as_deref(), Some(games::CONTRACT));
     // A node from before searching doesn't say it searches.
     let unsearched: games::Capabilities =
         serde_json::from_value(json!({"read":true,"write":true,"contract":"draft-1"})).unwrap();
-    assert!(!unsearched.search && !unsearched.delete);
+    assert!(!unsearched.search && !unsearched.delete && !unsearched.import);
     let older: lifecycle::InitializeResult = serde_json::from_value(
         json!({"protocol":"1.0","node":{"name":"chessdb","version":"0.1","license":"x"},"capabilities":{"preferences":{"read":true}}}),
     )
@@ -227,4 +227,112 @@ fn a_query_matches_names_and_tags_but_not_moves() {
         games::tag_values("[Event \"A\"]\n[Round]\n[Site \"B\"]"),
         ["A"]
     );
+}
+
+/// A game of `id` whose PGN is `pgn_bytes` long.
+fn imported(id: &str, pgn_bytes: usize) -> games::Game {
+    games::Game {
+        id: id.into(),
+        version: 1,
+        white: "Morphy".into(),
+        black: "Duke of Brunswick".into(),
+        result: games::GameResult::WhiteWon,
+        plies: 33,
+        pgn: "e".repeat(pgn_bytes),
+        players: None,
+        clock: None,
+    }
+}
+
+#[test]
+fn an_import_reads_as_the_spec_writes_it() {
+    let params: games::ImportParams = serde_json::from_value(json!({"games":[
+        {"id":"a","version":1,"white":"A","black":"B","result":"1-0","plies":0,"pgn":"1-0"}
+    ]}))
+    .unwrap();
+    assert_eq!(params.validate(), Ok(()));
+    let request = Request::new::<games::Import>(1, &params);
+    assert_eq!(request.method, "games/import");
+    assert_eq!(request.params::<games::Import>().unwrap(), params);
+    let result: games::ImportResult =
+        serde_json::from_value(json!({"games":["saved","kept","refused"]})).unwrap();
+    assert_eq!(
+        result.games,
+        [
+            games::Imported::Saved,
+            games::Imported::Kept,
+            games::Imported::Refused
+        ]
+    );
+}
+
+#[test]
+fn an_import_out_of_bounds_is_refused() {
+    let batch = |games: Vec<games::Game>| games::ImportParams { games };
+    assert!(batch(vec![]).validate().is_err(), "no games");
+    let many = (0..=games::MAX_IMPORT_GAMES)
+        .map(|n| imported(&format!("g{n}"), 10))
+        .collect::<Vec<_>>();
+    assert!(batch(many[1..].to_vec()).validate().is_ok());
+    assert!(batch(many).validate().is_err(), "one game too many");
+    assert!(
+        batch(vec![imported("a", 10), imported("a", 20)])
+            .validate()
+            .is_err(),
+        "the same identity twice"
+    );
+    let mut bad = imported("b", 10);
+    bad.white.clear();
+    assert!(batch(vec![imported("a", 10), bad]).validate().is_err());
+    let half = games::MAX_PGN_BYTES - 100;
+    assert!(
+        batch(vec![imported("a", half), imported("b", half)])
+            .validate()
+            .is_err(),
+        "two long games are more bytes than one message holds"
+    );
+}
+
+#[test]
+fn a_batcher_keeps_the_order_and_each_batch_within_the_bounds() {
+    let mut batcher = games::Batcher::default();
+    let mut batches = Vec::new();
+    let mut sent = Vec::new();
+    // Short games fill batches by count, long ones by bytes.
+    for n in 0..250 {
+        let game = imported(&format!("short-{n}"), 400);
+        sent.push(game.id.clone());
+        batches.extend(batcher.push(game));
+    }
+    for n in 0..9 {
+        let game = imported(&format!("long-{n}"), games::MAX_PGN_BYTES);
+        sent.push(game.id.clone());
+        batches.extend(batcher.push(game));
+    }
+    batches.extend(batcher.finish());
+    let sizes: Vec<usize> = batches.iter().map(|b| b.games.len()).collect();
+    assert_eq!(&sizes[..2], [games::MAX_IMPORT_GAMES; 2]);
+    // The last short games share a batch with the first long one, which fills it by bytes.
+    assert_eq!(sizes[2], 51, "{sizes:?}");
+    assert!(sizes[3..].iter().all(|n| *n == 1), "{sizes:?}");
+    for batch in &batches {
+        assert_eq!(batch.validate(), Ok(()));
+        let line = serde_json::to_vec(&cnp::Message::from(Request::new::<games::Import>(
+            i64::MAX,
+            batch,
+        )))
+        .unwrap();
+        assert!(
+            line.len() < games::MESSAGE_BYTES as usize,
+            "{} bytes",
+            line.len()
+        );
+    }
+    let order: Vec<String> = batches
+        .into_iter()
+        .flat_map(|b| b.games)
+        .map(|g| g.id)
+        .collect();
+    assert_eq!(order, sent);
+    assert!(games::Batcher::default().finish().is_none());
 }

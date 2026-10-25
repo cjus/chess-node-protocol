@@ -3,7 +3,9 @@
 //!
 //! A client saves each game under an identity of its own choosing, with a version that grows
 //! with every save ([`Save`]), lists them newest first ([`List`]), reads one back whole
-//! ([`Get`]), and deletes one it no longer wants ([`Delete`], on a node that offers it). A game travels as its PGN, with the few facts a list shows beside it (the
+//! ([`Get`]), and deletes one it no longer wants ([`Delete`], on a node that offers it). A
+//! client importing a file of many games saves them in batches, each one commit
+//! ([`Import`], on a node that offers it). A game travels as its PGN, with the few facts a list shows beside it (the
 //! players' names, the result, how many moves) and, for carrying on with an unfinished game,
 //! who played each side and the clock's times. The node keeps no chess rules: it checks
 //! shapes and sizes ([`Game::validate`]), and the client is responsible for the chess.
@@ -18,6 +20,12 @@
 //! match a query ([`ListParams::query`]): each of its words, ignoring case, in a player's name
 //! or in one of the values of the PGN's tags, such as its event, site or date ([`matches()`]).
 //! The moves aren't searched.
+//!
+//! **Importing.** A file of games can hold thousands, and a node commits each save durably
+//! (chessdb waits for the disk), so a save each would take minutes. [`Import`] saves up to
+//! [`MAX_IMPORT_GAMES`] in one commit, each as [`Save`] would, and answers what it did with
+//! each ([`Imported`]). A [`Batcher`] gathers a client's games into batches that keep within
+//! the bounds.
 //!
 //! **Pitfall: one message holds a whole game.** A node serving games reads messages of at
 //! least [`MESSAGE_BYTES`] (64 KiB, chessdb's limit), so a game is bounded
@@ -55,6 +63,12 @@ pub const DEFAULT_LIST_LIMIT: u32 = 20;
 pub const MAX_LIST_LIMIT: u32 = 100;
 /// The longest query, in bytes.
 pub const MAX_QUERY_BYTES: usize = 128;
+/// The most games one [`Import`] saves.
+pub const MAX_IMPORT_GAMES: usize = 100;
+/// The most bytes an [`Import`]'s games take together, each counted as JSON as
+/// [`Game::validate`] counts it: as many as one game may take, so a batch fits the message
+/// a single game does.
+pub const MAX_IMPORT_BYTES: usize = MAX_GAME_BYTES;
 /// No change: the version was already saved with a different game.
 pub const VERSION_REUSED: i64 = -32021;
 /// Storage failed; the outcome can be uncertain, so retry the exact save.
@@ -79,6 +93,9 @@ pub struct Capabilities {
     /// `games/delete` is available ([`Delete`]).
     #[serde(default)]
     pub delete: bool,
+    /// `games/import` is available ([`Import`]).
+    #[serde(default)]
+    pub import: bool,
     /// The contract the node implements, [`CONTRACT`]; absent means don't send games
     /// requests.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -197,7 +214,7 @@ impl Game {
                 return Err(format!("a clock shows at most {MAX_CLOCK_MS} ms"));
             }
         }
-        let bytes = serde_json::to_vec(self).map_err(|e| e.to_string())?.len();
+        let bytes = json_bytes(self);
         if bytes > MAX_GAME_BYTES {
             return Err(format!(
                 "a game is at most {MAX_GAME_BYTES} bytes as JSON, and this one is {bytes}"
@@ -422,4 +439,112 @@ impl RequestMethod for Delete {
     const NAME: &'static str = "games/delete";
     type Params = DeleteParams;
     type Result = Deleted;
+}
+
+/// `games/import`'s params: the games to save, in one commit.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ImportParams {
+    /// 1 to [`MAX_IMPORT_GAMES`] games, each a different identity, [`MAX_IMPORT_BYTES`] in
+    /// all.
+    pub games: Vec<Game>,
+}
+
+impl ImportParams {
+    /// Whether the batch keeps within the contract, and why not: 1 to [`MAX_IMPORT_GAMES`]
+    /// games, each valid ([`Game::validate`]), no identity twice, and [`MAX_IMPORT_BYTES`]
+    /// in all.
+    pub fn validate(&self) -> Result<(), String> {
+        if !(1..=MAX_IMPORT_GAMES).contains(&self.games.len()) {
+            return Err(format!("an import is 1 to {MAX_IMPORT_GAMES} games"));
+        }
+        let mut ids = std::collections::BTreeSet::new();
+        let mut bytes = 0;
+        for game in &self.games {
+            game.validate()?;
+            if !ids.insert(game.id.as_str()) {
+                return Err(format!("an import has the game {} twice", game.id));
+            }
+            bytes += json_bytes(game);
+        }
+        if bytes > MAX_IMPORT_BYTES {
+            return Err(format!(
+                "an import's games are at most {MAX_IMPORT_BYTES} bytes as JSON, and these are \
+                 {bytes}"
+            ));
+        }
+        Ok(())
+    }
+}
+
+/// What an import did with one of its games.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Imported {
+    /// Stored: it wasn't there, or an older version was, which it replaced.
+    Saved,
+    /// Nothing changed: this version of the same game, or a newer version, was there.
+    Kept,
+    /// Nothing changed: this version was saved with a different game ([`VERSION_REUSED`],
+    /// for a save).
+    Refused,
+}
+
+/// `games/import`'s result: what it did with each game, in the order they were sent.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ImportResult {
+    /// One for each game sent.
+    pub games: Vec<Imported>,
+}
+
+/// Saves several games in one commit, each as [`Save`] would, and answers after the commit
+/// with what it did with each. A batch outside the bounds saves nothing (Invalid params).
+/// Offered by a node whose capabilities say [`Capabilities::import`].
+pub enum Import {}
+impl RequestMethod for Import {
+    const NAME: &'static str = "games/import";
+    type Params = ImportParams;
+    type Result = ImportResult;
+}
+
+/// Gathers games, in order, into [`Import`] batches within its bounds: push each game and
+/// send each batch that comes back, then the last one, from [`Batcher::finish`]. It checks
+/// no game: push only valid ones ([`Game::validate`]), each identity once.
+#[derive(Clone, Debug, Default)]
+pub struct Batcher {
+    /// The batch being gathered.
+    games: Vec<Game>,
+    /// Its games' bytes, as [`MAX_IMPORT_BYTES`] counts them.
+    bytes: usize,
+}
+
+impl Batcher {
+    /// Adds `game`, and returns the batch gathered before it when `game` doesn't fit
+    /// beside it.
+    pub fn push(&mut self, game: Game) -> Option<ImportParams> {
+        let bytes = json_bytes(&game);
+        let full = self.games.len() == MAX_IMPORT_GAMES || self.bytes + bytes > MAX_IMPORT_BYTES;
+        let batch = (full && !self.games.is_empty()).then(|| self.take());
+        self.games.push(game);
+        self.bytes += bytes;
+        batch
+    }
+
+    /// The last batch, if any game is left.
+    pub fn finish(mut self) -> Option<ImportParams> {
+        (!self.games.is_empty()).then(|| self.take())
+    }
+
+    /// The batch gathered so far, leaving the batcher empty.
+    fn take(&mut self) -> ImportParams {
+        self.bytes = 0;
+        ImportParams {
+            games: std::mem::take(&mut self.games),
+        }
+    }
+}
+
+/// How many bytes `game` takes as JSON.
+fn json_bytes(game: &Game) -> usize {
+    // A game is plain data, which JSON always writes.
+    serde_json::to_vec(game).map_or(usize::MAX, |json| json.len())
 }
