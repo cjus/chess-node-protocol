@@ -106,8 +106,11 @@ read-only inspection of the local branch at
 `c896c1f9efc8e803ba77aad0d769f4cf6484f9f2` (adds `camera.follow`), and Solrac `main` at
 `1e43ffa` (2026-10-24), which adds `board.environment` (cjus/chessgui#162) and the
 `panel` section (cjus/chessgui#151).
+Solrac's game library (cjus/chessgui#198) adds `game.on_board` and `game.kind`, which say
+which game is on the board when Solrac starts and what kind it is, and the `library` keys,
+the Games window's place and size. The game itself is in the [games extension](games.md).
 No voice preference was present in those settings schemas. Unknown future settings
-abort import rather than disappear. Last-game/session state is outside this slice.
+abort import rather than disappear.
 
 | Keys | Type / accepted values |
 | --- | --- |
@@ -121,6 +124,10 @@ abort import rather than disappear. Last-game/session state is outside this slic
 | game.think_seconds, light.sun_lux, light.fill | finite number, 0–1,000,000 |
 | light.board_shine, light.piece_clearcoat, sound.volume | finite number, 0–1 |
 | light.board_reflection | finite number, 0–2 |
+| game.on_board | text: a game's identity in the games extension, 1–64 lowercase letters, digits and hyphens |
+| game.kind | text, 1–64 lowercase letters, digits and underscores (Solrac's kind of game: who plays each side) |
+| library.x, library.y | finite number, −1,000,000–1,000,000 points |
+| library.width, library.height | finite number, 1–32768 points |
 
 These are storage validation bounds, not changed GUI slider ranges. No value is
 clamped during import. Original TOML, including comments, is retained in the

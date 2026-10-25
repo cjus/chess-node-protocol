@@ -2,8 +2,8 @@
 //! chessdb's implementation (`spec/games.md`). It doesn't change the CNP 1.0 transport.
 //!
 //! A client saves each game under an identity of its own choosing, with a version that grows
-//! with every save ([`Save`]), lists them newest first ([`List`]), and reads one back whole
-//! ([`Get`]). A game travels as its PGN, with the few facts a list shows beside it (the
+//! with every save ([`Save`]), lists them newest first ([`List`]), reads one back whole
+//! ([`Get`]), and deletes one it no longer wants ([`Delete`], on a node that offers it). A game travels as its PGN, with the few facts a list shows beside it (the
 //! players' names, the result, how many moves) and, for carrying on with an unfinished game,
 //! who played each side and the clock's times. The node keeps no chess rules: it checks
 //! shapes and sizes ([`Game::validate`]), and the client is responsible for the chess.
@@ -76,6 +76,9 @@ pub struct Capabilities {
     /// lists every game, so a client sends one only to a node that searches.
     #[serde(default)]
     pub search: bool,
+    /// `games/delete` is available ([`Delete`]).
+    #[serde(default)]
+    pub delete: bool,
     /// The contract the node implements, [`CONTRACT`]; absent means don't send games
     /// requests.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -395,4 +398,28 @@ impl RequestMethod for Get {
     const NAME: &'static str = "games/get";
     type Params = GetParams;
     type Result = Stored;
+}
+
+/// `games/delete`'s params.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DeleteParams {
+    /// The game's identity.
+    pub id: String,
+}
+
+/// `games/delete`'s result: the game that is gone.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Deleted {
+    /// The deleted game's identity.
+    pub id: String,
+}
+
+/// Deletes one stored game, every version of it, and answers after the commit; a game the
+/// node doesn't keep is [`NOT_FOUND`], which a client retrying after a lost answer can take
+/// as done. Offered by a node whose capabilities say [`Capabilities::delete`].
+pub enum Delete {}
+impl RequestMethod for Delete {
+    const NAME: &'static str = "games/delete";
+    type Params = DeleteParams;
+    type Result = Deleted;
 }
