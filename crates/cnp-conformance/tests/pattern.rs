@@ -1,6 +1,6 @@
 //! Patterns: what matches what.
 
-use cnp_conformance::pattern::{Bindings, matches};
+use cnp_conformance::pattern::{Bindings, fill, matches};
 use serde_json::{Value, json};
 
 fn ok(pattern: Value, actual: Value) -> bool {
@@ -79,6 +79,28 @@ fn bindings_are_kept_only_when_the_whole_pattern_matches() {
     assert!(matches(&json!("$ref:x"), &json!(1), &mut bindings).is_ok());
     assert!(matches(&json!("$ref:x"), &json!(2), &mut bindings).is_err());
     assert!(matches(&json!("$ref:never"), &json!(2), &mut bindings).is_err());
+}
+
+#[test]
+fn a_send_carries_what_an_answer_bound() {
+    let mut bindings = Bindings::new();
+    matches(
+        &json!({"id": "$bind:backup"}),
+        &json!({"id": "b-1"}),
+        &mut bindings,
+    )
+    .unwrap();
+    let sent = fill(
+        &json!({"params": {"id": "$ref:backup", "ids": ["$ref:backup", "$any", 3]}}),
+        &bindings,
+    )
+    .unwrap();
+    // Only $ref: changes; other strings, even special ones, are sent as written.
+    assert_eq!(
+        sent,
+        json!({"params": {"id": "b-1", "ids": ["b-1", "$any", 3]}})
+    );
+    assert!(fill(&json!({"id": "$ref:never"}), &bindings).is_err());
 }
 
 #[test]

@@ -19,6 +19,7 @@ conforms to CNP 1.0 if it passes every session that applies to it.
 | `voice/` | Voices, models, refusing bad requests, and audio for a listen that isn't there (spec 8) | Voice nodes |
 | `preferences/` | The draft preferences extension's read (`spec/preferences.md`) | Nodes that keep preferences |
 | `games/` | The draft games extension: a save, its retry, a reused version, get, list, searching, deleting and importing (`spec/games.md`) | Nodes that keep games (searching, deleting and importing: those that offer them) |
+| `backups/` | The draft backups extension: the day's automatic backup once, a backup made, restored and the restore undone (`spec/backups.md`) | Nodes that back up what they keep |
 
 The voice sessions check only what doesn't need a model to be ready. A voice node's own tests
 check its speech and transcription.
@@ -38,7 +39,7 @@ Each later line is one step, with optionally a `comment`:
 
 | Step | What it does |
 | --- | --- |
-| `{"send": message}` | Writes the message to the node |
+| `{"send": message}` | Writes the message to the node, each `"$ref:NAME"` in it replaced by the value bound as `NAME` (below) |
 | `{"sendRaw": "text"}` | Writes the text as a line, as it is (for broken messages) |
 | `{"expect": pattern}` | Waits for a message matching the pattern |
 | `{"expectAll": [pattern, …]}` | Waits for messages matching all of them, in any order |

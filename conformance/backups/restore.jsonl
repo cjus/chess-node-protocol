@@ -1,0 +1,32 @@
+{"session":"backups-restore","description":"draft-1 backups: a backup made, a game saved after it, then the backup restored takes the game away, and restoring the before-restore backup brings it back (spec/backups.md, backups/restore)","requires":["backups.create","backups.restore","games.read","games.write","games.delete"]}
+{"send":{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocol":"1.0","client":{"name":"cnp-conformance","version":"1.0"}}}}
+{"expect":{"id":1,"result":{"capabilities":{"backups":{"contract":"draft-1","create":true,"restore":true}}}}}
+{"send":{"jsonrpc":"2.0","id":2,"method":"games/save","params":{"game":{"id":"cnp-conformance-backup-kept","version":1,"white":"Kept","black":"Game","result":"*","plies":0,"pgn":"*"}}}}
+{"expect":{"id":2,"result":{"id":"cnp-conformance-backup-kept","version":1}}}
+{"comment":"The later game may be there from an earlier run against the same node: gone either way."}
+{"send":{"jsonrpc":"2.0","id":3,"method":"games/delete","params":{"id":"cnp-conformance-backup-later"}}}
+{"expect":{"id":3}}
+{"send":{"jsonrpc":"2.0","id":4,"method":"backups/create","params":{}}}
+{"expect":{"id":4,"result":{"made":true,"backup":{"id":"$bind:backup","kind":"manual","createdAt":"$string","bytes":"$integer","games":"$integer","settings":"$integer"}}}}
+{"send":{"jsonrpc":"2.0","id":5,"method":"games/save","params":{"game":{"id":"cnp-conformance-backup-later","version":1,"white":"Later","black":"Game","result":"*","plies":0,"pgn":"*"}}}}
+{"expect":{"id":5,"result":{"id":"cnp-conformance-backup-later","version":1}}}
+{"send":{"jsonrpc":"2.0","id":6,"method":"backups/restore","params":{"id":"$ref:backup"}}}
+{"expect":{"id":6,"result":{"restored":{"id":"$ref:backup","kind":"manual"},"before":{"id":"$bind:before","kind":"beforeRestore"}}}}
+{"comment":"As the backup had it: the game saved after it is gone, the one before it kept."}
+{"send":{"jsonrpc":"2.0","id":7,"method":"games/get","params":{"id":"cnp-conformance-backup-later"}}}
+{"expect":{"id":7,"error":{"code":-32025}}}
+{"send":{"jsonrpc":"2.0","id":8,"method":"games/get","params":{"id":"cnp-conformance-backup-kept"}}}
+{"expect":{"id":8,"result":{"game":{"id":"cnp-conformance-backup-kept"}}}}
+{"comment":"Restoring what the node had before undoes the restore."}
+{"send":{"jsonrpc":"2.0","id":9,"method":"backups/restore","params":{"id":"$ref:before"}}}
+{"expect":{"id":9,"result":{"restored":{"id":"$ref:before","kind":"beforeRestore"},"before":{"kind":"beforeRestore"}}}}
+{"send":{"jsonrpc":"2.0","id":10,"method":"games/get","params":{"id":"cnp-conformance-backup-later"}}}
+{"expect":{"id":10,"result":{"game":{"id":"cnp-conformance-backup-later"}}}}
+{"send":{"jsonrpc":"2.0","id":11,"method":"backups/restore","params":{"id":"no-such-backup"}}}
+{"expect":{"id":11,"error":{"code":-32025}}}
+{"send":{"jsonrpc":"2.0","id":12,"method":"backups/restore","params":{"id":"Not An Id"}}}
+{"expect":{"id":12,"error":{"code":-32602}}}
+{"send":{"jsonrpc":"2.0","id":13,"method":"shutdown"}}
+{"expect":{"id":13,"result":null}}
+{"send":{"jsonrpc":"2.0","method":"exit"}}
+{"expectExit":0}

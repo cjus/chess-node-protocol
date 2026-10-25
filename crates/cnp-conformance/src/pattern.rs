@@ -27,6 +27,34 @@ use serde_json::Value;
 /// Values remembered with `$bind:NAME`, for `$ref:NAME`.
 pub type Bindings = HashMap<String, Value>;
 
+/// `message` to send, with each string `"$ref:NAME"` in it replaced by the value bound as
+/// `NAME` ([`Bindings`]), so a step can send what an earlier answer said, such as an
+/// identity the node chose. No other string changes. An unbound name is an error.
+pub fn fill(message: &Value, bindings: &Bindings) -> Result<Value, String> {
+    Ok(match message {
+        Value::String(text) => match text.strip_prefix("$ref:") {
+            Some(name) => bindings
+                .get(name)
+                .cloned()
+                .ok_or_else(|| format!("$ref:{name} sent before anything was bound as {name}"))?,
+            None => message.clone(),
+        },
+        Value::Array(items) => Value::Array(
+            items
+                .iter()
+                .map(|item| fill(item, bindings))
+                .collect::<Result<_, _>>()?,
+        ),
+        Value::Object(fields) => Value::Object(
+            fields
+                .iter()
+                .map(|(key, value)| Ok((key.clone(), fill(value, bindings)?)))
+                .collect::<Result<_, String>>()?,
+        ),
+        _ => message.clone(),
+    })
+}
+
 /// Why a message doesn't match: where, and what was wrong there.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Mismatch {

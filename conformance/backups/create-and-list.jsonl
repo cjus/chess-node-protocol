@@ -1,0 +1,17 @@
+{"session":"backups-create-and-list","description":"draft-1 backups: the day's automatic backup is made once, a backup asked for is made each time, and the list has them newest first (spec/backups.md, backups/create and backups/list)","requires":["backups.create","backups.list"]}
+{"send":{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocol":"1.0","client":{"name":"cnp-conformance","version":"1.0"}}}}
+{"expect":{"id":1,"result":{"capabilities":{"backups":{"contract":"draft-1","list":true,"create":true}}}}}
+{"comment":"Made now, or earlier today by another run: either way the day's backup."}
+{"send":{"jsonrpc":"2.0","id":2,"method":"backups/create","params":{"automatic":true}}}
+{"expect":{"id":2,"result":{"made":"$boolean","backup":{"id":"$bind:automatic","kind":"automatic"}}}}
+{"send":{"jsonrpc":"2.0","id":3,"method":"backups/create","params":{"automatic":true}}}
+{"expect":{"id":3,"result":{"made":false,"backup":{"id":"$ref:automatic","kind":"automatic"}}}}
+{"comment":"Without params, a backup the player asked for."}
+{"send":{"jsonrpc":"2.0","id":4,"method":"backups/create"}}
+{"expect":{"id":4,"result":{"made":true,"backup":{"id":"$bind:manual","kind":"manual"}}}}
+{"send":{"jsonrpc":"2.0","id":5,"method":"backups/list"}}
+{"expect":{"id":5,"result":{"backups":"$array"}}}
+{"send":{"jsonrpc":"2.0","id":6,"method":"shutdown"}}
+{"expect":{"id":6,"result":null}}
+{"send":{"jsonrpc":"2.0","method":"exit"}}
+{"expectExit":0}

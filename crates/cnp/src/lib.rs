@@ -12,8 +12,9 @@
 //! - [`engine`]: searching positions (`engine/…`);
 //! - [`voice`]: text to speech, speech to text, and listening to speech as it comes
 //!   (`voice/…`);
-//! - [`preferences`] and [`games`]: proposed draft extensions for a node that keeps a
-//!   program's settings and its library of games (`preferences/…`, `games/…`);
+//! - [`preferences`], [`games`] and [`backups`]: proposed draft extensions for a node that
+//!   keeps a program's settings and its library of games, and backs them up
+//!   (`preferences/…`, `games/…`, `backups/…`);
 //! - [`stdio`]: reading and writing messages, one per line.
 //!
 //! The crate has no runtime and no threads of its own: a program reads messages in a loop of
@@ -43,6 +44,7 @@
 //!
 //! [JSON-RPC 2.0]: https://www.jsonrpc.org/specification
 
+pub mod backups;
 pub mod engine;
 pub mod games;
 pub mod lifecycle;
