@@ -1,0 +1,11 @@
+{"session": "hotwords-bad-params", "description": "a hotword that is empty or holds a line break is InvalidParams, in a transcription and in a listen, whether or not the models are ready (spec 8)", "requires": ["voice", "voice.hotwords", "voice.transcribe", "voice.listen"]}
+{"send": {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocol": "1.0", "client": {"name": "cnp-conformance", "version": "1.0"}}}}
+{"expect": {"id": 1, "result": {"protocol": "1.0", "node": {"name": "$string", "version": "$string", "license": "$string"}, "capabilities": "$object"}}}
+{"send": {"jsonrpc": "2.0", "id": 2, "method": "voice/transcribe", "params": {"audio": "UklGRiQAAABXQVZFZm10IBAAAAABAAEAgD4AAAB9AAACABAAZGF0YQAAAAA=", "format": "wav", "hotwords": [""]}}}
+{"expect": {"id": 2, "error": {"code": -32602, "message": "$string"}}}
+{"send": {"jsonrpc": "2.0", "id": 3, "method": "voice/listen", "params": {"format": "pcmF32", "sampleRate": 16000, "hotwords": ["knight", "two\nwords"]}}}
+{"expect": {"id": 3, "error": {"code": -32602, "message": "$string"}}}
+{"send": {"jsonrpc": "2.0", "id": 99, "method": "shutdown"}}
+{"expect": {"id": 99, "result": null}}
+{"send": {"jsonrpc": "2.0", "method": "exit"}}
+{"expectExit": 0}

@@ -28,7 +28,16 @@
 //!
 //! **Pitfall: audio and answers cross.** The client may still be sending audio for a listen
 //! the node has answered (an error, say). The node ignores audio for a listen it doesn't
-//! have, and the client stops sending once it sees the answer. A node downloads and loads its own models, and says how far it has got
+//! have, and the client stops sending once it sees the answer.
+//!
+//! ## Hotwords
+//!
+//! A client that knows what is likely to be said gives it as `hotwords` (capability
+//! `hotwords`), and the node favours those words where the sound allows them: "knight" over
+//! "night". The client knows its domain, so the node needn't: a chess board sends the words
+//! of a move, another program its own.
+//!
+//! A node downloads and loads its own models, and says how far it has got
 //! with `voice/modelState`; until a model is ready, requests that need it are answered with
 //! [`code::NOT_READY`](crate::code::NOT_READY).
 //!
@@ -55,6 +64,9 @@ pub struct VoiceCapabilities {
     /// Each word's start and end (`wordTimes`).
     #[serde(default)]
     pub word_times: bool,
+    /// Words the client expects to be said, favoured in what is heard (`hotwords`).
+    #[serde(default)]
+    pub hotwords: bool,
     /// The audio formats it reads and writes.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub formats: Vec<AudioFormat>,
@@ -187,6 +199,10 @@ pub struct TranscribeParams {
     /// Whether to return each word's start and end (capability `wordTimes`).
     #[serde(default, skip_serializing_if = "is_false")]
     pub word_times: bool,
+    /// Words and phrases likely to be said, which the node favours (capability `hotwords`).
+    /// Missing: none.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub hotwords: Vec<String>,
 }
 
 /// The text heard.
@@ -333,9 +349,18 @@ pub struct ListenParams {
     /// not. Missing: the node decides.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_speech_ms: Option<u64>,
+    /// How much of the audio from before an utterance's start it is heard with, in
+    /// milliseconds, so that a short first word said fast isn't cut off; 0 for none. Missing:
+    /// the node decides.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lead_in_ms: Option<u64>,
     /// Whether `voice/heard` gives each word's start and end (capability `wordTimes`).
     #[serde(default, skip_serializing_if = "is_false")]
     pub word_times: bool,
+    /// Words and phrases likely to be said, for every utterance (capability `hotwords`).
+    /// Missing: none.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub hotwords: Vec<String>,
 }
 
 impl ListenParams {
@@ -348,7 +373,9 @@ impl ListenParams {
             end_silence_ms: None,
             min_speech_ms: None,
             max_speech_ms: None,
+            lead_in_ms: None,
             word_times: false,
+            hotwords: Vec::new(),
         }
     }
 }

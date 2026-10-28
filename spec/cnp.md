@@ -456,12 +456,25 @@ Capabilities:
 | `transcribe` | boolean | `voice/transcribe` |
 | `listen` | boolean | `voice/listen`, and the notifications that go with it |
 | `wordTimes` | boolean | Each word's start and end, in either direction |
+| `hotwords` | boolean | Words the client expects to be said, favoured in what is heard (`hotwords`, below) |
 | `formats` | array of strings | The audio formats it reads and writes |
 
 Audio formats:
 
 - `wav`: a RIFF WAVE file, mono, with 16-bit integer or 32-bit float samples;
 - `pcmF32`: raw mono samples, 32-bit float, little-endian, at a stated sample rate.
+
+**Hotwords.** A client that knows what is likely to be said (the words of a chess move, a
+product's names) MAY give them with `voice/transcribe` and `voice/listen`, if the node offers
+`hotwords`. Each is a word or a phrase, and the node favours it where the sound allows it:
+"knight" over "night", "pawn" over "on". How much is the node's choice. A hotword that is empty
+or holds a line break is `InvalidParams`, and a node MAY refuse more hotwords than it can take
+the same way. A node without `hotwords` ignores them.
+
+The voice domain stands on its own: a voice node needs only this section, the lifecycle
+([5](#5-lifecycle)) and the errors ([9](#9-errors)), and none of the engine domain.
+[audio-chat-box](https://github.com/cjus/audio-chat-box), the voice node Solrac uses,
+describes that subset for voice clients that aren't chess programs.
 
 A node downloads, checks and loads its own models. Until a model is ready, a request that
 needs it is answered with `NotReady`. A node checks a request's params first, so a request with
@@ -513,6 +526,7 @@ Params:
 | `sampleRate` | integer | For `pcmF32` (a WAV file says its own) |
 | `language` | string | The language spoken, a BCP 47 tag. Missing: the node's default |
 | `wordTimes` | boolean | Return each word's start and end (needs `wordTimes`) |
+| `hotwords` | array of strings | Words and phrases likely to be said (needs `hotwords`). Missing: none |
 
 Audio that can't be decoded is `InvalidParams`. The result: `text` (empty if nothing was said)
 and, if asked for, `words`.
@@ -552,9 +566,12 @@ Params:
 | `endSilenceMs` | integer | How long a pause ends what someone is saying. Missing: the node decides |
 | `minSpeechMs` | integer | Shorter sounds aren't speech (a cough, a click): nothing is said of them. Missing: the node decides |
 | `maxSpeechMs` | integer | The longest one utterance may be: at this length it ends, pause or not. Missing: the node decides |
+| `leadInMs` | integer | How much of the audio from before an utterance's start it is heard with, so that a short first word said fast isn't cut off; 0 for none. Missing: the node decides |
 | `wordTimes` | boolean | Return each word's start and end in `voice/heard` (needs `wordTimes`) |
+| `hotwords` | array of strings | Words and phrases likely to be said, for every utterance of the listen (needs `hotwords`). Missing: none |
 
-Wrong params are `InvalidParams`, a duration of 0 or one the node can't keep to included.
+Wrong params are `InvalidParams`, a duration of 0 (but `leadInMs`) or one the node can't keep
+to included.
 Until the models a listen needs are ready, it is `NotReady`. A node MAY hear one listen at a
 time, and answer another with `Busy`.
 
@@ -588,7 +605,7 @@ cancelled listen ([4.1](#41-cancelling-a-request)) drops whatever it was hearing
 The audio is shortened here:
 
 ```cnp
-→ {"jsonrpc": "2.0", "id": 30, "method": "voice/listen", "params": {"format": "pcmF32", "sampleRate": 16000, "endSilenceMs": 800}}
+→ {"jsonrpc": "2.0", "id": 30, "method": "voice/listen", "params": {"format": "pcmF32", "sampleRate": 16000, "endSilenceMs": 800, "hotwords": ["knight", "bishop", "castle"]}}
 → {"jsonrpc": "2.0", "method": "voice/audio", "params": {"id": 30, "audio": "AAAAAAAAAAA="}}
 ← {"jsonrpc": "2.0", "method": "voice/speechStarted", "params": {"id": 30, "startMs": 1240}}
 → {"jsonrpc": "2.0", "method": "voice/audio", "params": {"id": 30, "audio": "AAAAAAAAAAA="}}
@@ -670,5 +687,8 @@ These names are reserved, so that nothing else uses them:
   `voice/audio`, `voice/speechStarted`, `voice/heard`, and the purpose `listen`), so a player
   can talk to Solrac without holding a button (cjus/chessgui#134); and `engine/evaluate`
   (capability `evaluate`), so a client can say why an engine likes a position
-  (cjus/chessgui#145). Its design came from
+  (cjus/chessgui#145); and hotwords (capability `hotwords`, on `voice/transcribe` and
+  `voice/listen`) and a listen's `leadInMs`, so the client says what is likely to be said
+  and how a short first word is kept, rather than the voice node knowing chess
+  (cjus/chessgui#226). Its design came from
   Solrac, a chess board that teaches, and cb2026, its engine.
