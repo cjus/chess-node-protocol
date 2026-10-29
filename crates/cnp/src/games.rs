@@ -27,6 +27,12 @@
 //! each ([`Imported`]). A [`Batcher`] gathers a client's games into batches that keep within
 //! the bounds.
 //!
+//! **The text a game came from.** A client that reads a game from a file, such as an
+//! imported PGN, may save that text too, unchanged, beside the PGN it writes ([`Game::source`],
+//! on a node that keeps it: [`Capabilities::source`]). A client whose reader drops what it
+//! doesn't understand (a variation, an annotation) can then read the text again when its
+//! reader improves, and nothing the file held is lost. The node only keeps it.
+//!
 //! **Pitfall: one message holds a whole game.** A node serving games reads messages of at
 //! least [`MESSAGE_BYTES`] (64 KiB, chessdb's limit), so a game is bounded
 //! ([`MAX_GAME_BYTES`], [`MAX_PGN_BYTES`], [`MAX_PLIES`]) with room left for the envelope of
@@ -46,6 +52,9 @@ pub const MAX_ID_BYTES: usize = 64;
 pub const MAX_NAME_BYTES: usize = 128;
 /// The longest PGN, in bytes.
 pub const MAX_PGN_BYTES: usize = 32 * 1024;
+/// The longest [`Game::source`], in bytes: as long as a PGN. With both that long, a game is
+/// past [`MAX_GAME_BYTES`], so a client saves the source only when the game still fits.
+pub const MAX_SOURCE_BYTES: usize = MAX_PGN_BYTES;
 /// The most moves (plies) a saved game may have.
 pub const MAX_PLIES: u32 = 1000;
 /// The longest time control, in bytes.
@@ -96,6 +105,10 @@ pub struct Capabilities {
     /// `games/import` is available ([`Import`]).
     #[serde(default)]
     pub import: bool,
+    /// The node keeps a game's [`Game::source`] and gives it back with [`Get`]. A node
+    /// without it ignores the field, as it ignores any unknown field.
+    #[serde(default)]
+    pub source: bool,
     /// The contract the node implements, [`CONTRACT`]; absent means don't send games
     /// requests.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -173,6 +186,11 @@ pub struct Game {
     /// The clock, if the game had one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub clock: Option<Clock>,
+    /// The text the game was read from, if the client read it from one, such as a PGN
+    /// file's: unchanged, so a later reader can read it again ([`Capabilities::source`]).
+    /// 1 to [`MAX_SOURCE_BYTES`] bytes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
 }
 
 impl Game {
@@ -199,6 +217,11 @@ impl Game {
         }
         if self.pgn.is_empty() || self.pgn.len() > MAX_PGN_BYTES {
             return Err(format!("a game's PGN is 1 to {MAX_PGN_BYTES} bytes"));
+        }
+        if let Some(source) = &self.source
+            && (source.is_empty() || source.len() > MAX_SOURCE_BYTES)
+        {
+            return Err(format!("a game's source is 1 to {MAX_SOURCE_BYTES} bytes"));
         }
         if let Some(clock) = &self.clock {
             if !valid_text(&clock.control, MAX_CONTROL_BYTES) {

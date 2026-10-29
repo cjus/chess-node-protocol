@@ -19,20 +19,22 @@ fn game() -> games::Game {
             control: "5+3".into(),
             times_ms: vec![[300_000, 300_000], [302_000, 300_000], [302_000, 298_500]],
         }),
+        source: None,
     }
 }
 
 #[test]
 fn the_capability_names_its_contract_and_older_nodes_have_none() {
-    let value = json!({"protocol":"1.0","node":{"name":"chessdb","version":"0.1","license":"LicenseRef-Proprietary"},"capabilities":{"preferences":{"read":true,"write":true},"games":{"read":true,"write":true,"search":true,"delete":true,"import":true,"contract":"draft-1","future":1}},"limits":{"maxMessageBytes":65536}});
+    let value = json!({"protocol":"1.0","node":{"name":"chessdb","version":"0.1","license":"LicenseRef-Proprietary"},"capabilities":{"preferences":{"read":true,"write":true},"games":{"read":true,"write":true,"search":true,"delete":true,"import":true,"source":true,"contract":"draft-1","future":1}},"limits":{"maxMessageBytes":65536}});
     let result: lifecycle::InitializeResult = serde_json::from_value(value).unwrap();
     let games = result.capabilities.games.unwrap();
     assert!(games.read && games.write && games.search && games.delete && games.import);
+    assert!(games.source);
     assert_eq!(games.contract.as_deref(), Some(games::CONTRACT));
     // A node from before searching doesn't say it searches.
     let unsearched: games::Capabilities =
         serde_json::from_value(json!({"read":true,"write":true,"contract":"draft-1"})).unwrap();
-    assert!(!unsearched.search && !unsearched.delete && !unsearched.import);
+    assert!(!unsearched.search && !unsearched.delete && !unsearched.import && !unsearched.source);
     let older: lifecycle::InitializeResult = serde_json::from_value(
         json!({"protocol":"1.0","node":{"name":"chessdb","version":"0.1","license":"x"},"capabilities":{"preferences":{"read":true}}}),
     )
@@ -58,8 +60,19 @@ fn a_game_reads_as_the_spec_writes_it() {
         json!({"id":"a","version":1,"white":"A","black":"B","result":"1-0","plies":0,"pgn":"1-0"}),
     )
     .unwrap();
-    assert!(bare.players.is_none() && bare.clock.is_none());
+    assert!(bare.players.is_none() && bare.clock.is_none() && bare.source.is_none());
     assert_eq!(bare.validate(), Ok(()));
+    assert!(!serde_json::to_string(&bare).unwrap().contains("source"));
+}
+
+#[test]
+fn a_game_keeps_the_text_it_came_from() {
+    let text = "[Event \"Paris\"]\n\n1. e4 e5 2. Nf3 d6!? (2... Nc6) $1 *\n";
+    let value = json!({"id":"a","version":1,"white":"A","black":"B","result":"*","plies":4,"pgn":"[Event \"Paris\"]\n\n1. e4 e5 2. Nf3 d6 *\n","source":text});
+    let read: games::Game = serde_json::from_value(value.clone()).unwrap();
+    assert_eq!(read.source.as_deref(), Some(text));
+    assert_eq!(read.validate(), Ok(()));
+    assert_eq!(serde_json::to_value(&read).unwrap(), value);
 }
 
 #[test]
@@ -127,7 +140,7 @@ fn requests_round_trip_through_their_methods() {
 #[test]
 fn a_game_out_of_bounds_is_refused() {
     assert_eq!(game().validate(), Ok(()));
-    let cases: [fn(&mut games::Game); 11] = [
+    let cases: [fn(&mut games::Game); 13] = [
         |g| g.id = String::new(),
         |g| g.id = "Upper".into(),
         |g| g.id = "x".repeat(games::MAX_ID_BYTES + 1),
@@ -139,6 +152,8 @@ fn a_game_out_of_bounds_is_refused() {
         |g| g.pgn = String::new(),
         |g| g.clock.as_mut().unwrap().times_ms.pop().map(drop).unwrap(),
         |g| g.clock.as_mut().unwrap().times_ms[0][1] = games::MAX_CLOCK_MS + 1,
+        |g| g.source = Some(String::new()),
+        |g| g.source = Some("e".repeat(games::MAX_SOURCE_BYTES + 1)),
     ];
     for (n, case) in cases.into_iter().enumerate() {
         let mut bad = game();
@@ -180,6 +195,15 @@ fn the_largest_game_fits_one_message() {
     escaped.plies = plies;
     escaped.clock = stored.game.clock.clone();
     assert!(escaped.validate().is_err());
+
+    // A source as long as the PGN, beside it, is past the game's bound: a client keeps
+    // the source only when the game still fits.
+    let mut both = game();
+    both.pgn = "e".repeat(games::MAX_PGN_BYTES);
+    both.source = Some(both.pgn.clone());
+    assert!(both.validate().is_err());
+    both.source = Some("e".repeat(games::MAX_GAME_BYTES - games::MAX_PGN_BYTES - 1024));
+    assert_eq!(both.validate(), Ok(()));
 }
 
 #[test]
@@ -241,6 +265,7 @@ fn imported(id: &str, pgn_bytes: usize) -> games::Game {
         pgn: "e".repeat(pgn_bytes),
         players: None,
         clock: None,
+        source: None,
     }
 }
 
