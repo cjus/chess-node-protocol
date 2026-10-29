@@ -18,7 +18,7 @@ conforms to CNP 1.0 if it passes every session that applies to it.
 | `engine/` | Searches, stop and cancel, and each engine capability (spec 7) | Engine nodes |
 | `voice/` | Voices, models, refusing bad requests, and audio for a listen that isn't there (spec 8) | Voice nodes |
 | `preferences/` | The draft preferences extension's read (`spec/preferences.md`) | Nodes that keep preferences |
-| `games/` | The draft games extension: a save, its retry, a reused version, get, list, searching, deleting and importing (`spec/games.md`) | Nodes that keep games (searching, deleting and importing: those that offer them) |
+| `games/` | The draft games extension: a save, its retry, a reused version, get, list, searching, deleting, importing and a game's source (`spec/games.md`) | Nodes that keep games (searching, deleting, importing and sources: those that offer them) |
 | `backups/` | The draft backups extension: the day's automatic backup once, a backup made, restored and the restore undone (`spec/backups.md`) | Nodes that back up what they keep |
 
 The voice sessions check only what doesn't need a model to be ready. A voice node's own tests

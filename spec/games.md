@@ -19,12 +19,12 @@ Initialize's `capabilities` names the domain, with its contract:
 
 ```json
 {"capabilities": {"games": {"read": true, "write": true, "search": true, "delete": true,
- "import": true, "contract": "draft-1"}}}
+ "import": true, "source": true, "contract": "draft-1"}}}
 ```
 
 `read` offers `games/list` and `games/get`, `write` offers `games/save`, `search` says
-that `games/list` takes a `query`, `delete` offers `games/delete`, and `import` offers
-`games/import`. A missing switch is false: a node without `search` ignores
+that `games/list` takes a `query`, `delete` offers `games/delete`, `import` offers
+`games/import`, and `source` says that the node keeps a game's `source`. A missing switch is false: a node without `search` ignores
 a query, as it ignores any unknown field, and lists every game, so a client sends a query only
 to a node that searches. A client sends
 games requests only to a node whose `contract` is `draft-1`, and a node serving games reads
@@ -58,6 +58,16 @@ them with Method not found (-32601), as CNP does for any domain it doesn't serve
 | `pgn` | The whole game in PGN | 1–32,768 bytes |
 | `players` | Optional: who played each side, `human` or `engine` | |
 | `clock` | Optional: the time control as the client writes it, and each side's time left in milliseconds in every position from the start | control 1–32 bytes; `plies` + 1 pairs; each at most 360,000,000 (100 hours) |
+| `source` | Optional: the text the client read the game from, such as a PGN file's, unchanged | 1–32,768 bytes |
+
+A client that reads a game from a file, such as an imported PGN, may send that text as its
+`source`, beside the `pgn` it writes. If the client's reader dropped something it didn't
+understand (a variation, an annotation), the text is still kept, and a later reader can read
+it again. A node whose capability says `source` keeps it as it came and gives it back with
+`games/get`; it doesn't search it, and checks only its size. A node without `source` ignores
+the field, as it ignores any unknown field. The source counts towards the game's size like
+any other field, so a `pgn` and a `source` both near their bounds don't fit together: a
+client sends the source only when the game still fits.
 
 The whole game, as JSON, is at most 61,440 bytes, so that it and the envelope of a `games/get`
 answer fit a 64 KiB message. A game outside these bounds is refused with Invalid params
@@ -190,6 +200,13 @@ gathers a client's games into batches that keep within the bounds.
 | -32022 | Storage or I/O failed; the outcome can be uncertain | Keep the game; retry the exact save |
 | -32025 | No game with that identity | Refresh the list; for a delete, it is already gone |
 | -32800 | Cancelled before the commit | Nothing was saved by this attempt |
+
+## Changes
+
+Draft 1 grows only by optional fields and capabilities, which older nodes and clients ignore.
+
+- 2026-10-29: `source`, the text a game was read from, and the `source` capability
+  (cjus/chessgui#232).
 
 ## Not in draft 1
 

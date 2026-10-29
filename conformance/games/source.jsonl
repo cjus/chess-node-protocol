@@ -1,0 +1,14 @@
+{"session":"games-source","description":"draft-1 games: a game saved with the text it was read from gets it back unchanged, and a source out of bounds is refused (spec/games.md)","requires":["games.read","games.write","games.source"]}
+{"send":{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocol":"1.0","client":{"name":"cnp-conformance","version":"1.0"}}}}
+{"expect":{"id":1,"result":{"capabilities":{"games":{"contract":"draft-1","source":true}}}}}
+{"send":{"jsonrpc":"2.0","id":2,"method":"games/save","params":{"game":{"id":"cnp-conformance-source","version":1,"white":"Morphy","black":"Duke Karl","result":"1-0","plies":4,"pgn":"[Event \"Paris\"]\n\n1. e4 e5 2. Nf3 d6 1-0\n","source":"[Event \"Paris\"]\n\n1. e4 e5 2. Nf3 d6!? (2... Nc6 3. Bb5) $1 {a comment}  1-0\r\n"}}}}
+{"expect":{"id":2,"result":{"id":"cnp-conformance-source","version":1,"plies":4,"createdAt":"$string","updatedAt":"$string"}}}
+{"send":{"jsonrpc":"2.0","id":3,"method":"games/get","params":{"id":"cnp-conformance-source"}}}
+{"expect":{"id":3,"result":{"game":{"id":"cnp-conformance-source","pgn":"[Event \"Paris\"]\n\n1. e4 e5 2. Nf3 d6 1-0\n","source":"[Event \"Paris\"]\n\n1. e4 e5 2. Nf3 d6!? (2... Nc6 3. Bb5) $1 {a comment}  1-0\r\n"},"createdAt":"$string","updatedAt":"$string"}}}
+{"comment":"An empty source is out of bounds."}
+{"send":{"jsonrpc":"2.0","id":4,"method":"games/save","params":{"game":{"id":"cnp-conformance-source","version":2,"white":"Morphy","black":"Duke Karl","result":"1-0","plies":4,"pgn":"[Event \"Paris\"]\n\n1. e4 e5 2. Nf3 d6 1-0\n","source":""}}}}
+{"expect":{"id":4,"error":{"code":-32602}}}
+{"send":{"jsonrpc":"2.0","id":5,"method":"shutdown"}}
+{"expect":{"id":5,"result":null}}
+{"send":{"jsonrpc":"2.0","method":"exit"}}
+{"expectExit":0}
