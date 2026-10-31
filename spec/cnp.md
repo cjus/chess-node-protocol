@@ -444,18 +444,18 @@ opponent's time as well as its own. This is UCI's `go ponder` and `ponderhit`.
 **A ponder search** is an `engine/search` with `"ponder": true`. Its `position` already has the
 expected move played, and its `limits` are the ones the search should keep to once the move is
 played, `limits.clock` included, with the engine's own time as it stands, since its clock doesn't
-run on the opponent's time. Until the hit, the search keeps to none of its limits, sends
-`engine/progress` as usual, and doesn't answer, even when it has nothing more to search. A node
-may stop searching at a depth, node or mate limit before the hit and wait, since the hit would
-end the search at once anyway; what it must not do is answer. Only the node's `maxTimeMs`
+run on the opponent's time. Until the hit, the search's time doesn't run, it sends
+`engine/progress` as usual, and it MUST NOT answer, even when it has nothing more to search. It
+MAY stop searching at a depth, node or mate limit and wait for the hit, which then ends it at
+once: the client can't tell, and the node saves the work. Only the node's `maxTimeMs`
 ([6.3](#63-limits)) still holds, from the request, and the search answers at it as an infinite
 one does. A request that is wrong is answered at once, as for any search.
 
 **A hit.** `engine/ponderHit` says the expected move was played. Params: `{"id": …}`, the ponder
 search's request id. The result is `null`. From the moment the node receives it, the search keeps
-to its limits: its `timeMs`, and its use of the clock, count from the hit, and a depth or node
-limit it has already passed ends it at once. It keeps its tree, and answers the `engine/search`
-as any search does, with `ponderMs` saying how long it pondered.
+to its limits: its `timeMs`, and its use of the clock, count from the hit, and a depth, node or
+mate limit it has already reached ends it at once. It keeps its tree, and answers the
+`engine/search` as any search does, with `ponderMs` saying how long it pondered.
 
 ```cnp
 → {"jsonrpc": "2.0", "id": 14, "method": "engine/search", "params": {"position": {"fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", "moves": ["e2e4", "e7e5", "g1f3", "b8c6"]}, "limits": {"clock": {"white": {"timeMs": 175000, "incrementMs": 2000}, "black": {"timeMs": 168000, "incrementMs": 2000}}}, "ponder": true}}

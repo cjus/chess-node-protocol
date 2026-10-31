@@ -20,10 +20,10 @@
 //! exact or a bound ([`Score`]).
 //!
 //! **Pondering** (spec, 7.7) is the one exchange that spans requests: a search with
-//! [`SearchParams::ponder`] runs on the opponent's time, keeping to none of its limits, until
-//! [`PonderHit`] says the expected move was played. On a miss the client cancels it and starts
-//! another. The pitfall is time: a ponder search's limits, the clock included, count from the
-//! hit, not from the request.
+//! [`SearchParams::ponder`] runs on the opponent's time, without answering, until [`PonderHit`]
+//! says the expected move was played. On a miss the client cancels it and starts another. The
+//! pitfall is time: a ponder search's time limits, the clock included, count from the hit, not
+//! from the request.
 
 use std::collections::BTreeMap;
 
@@ -165,9 +165,10 @@ pub struct SearchParams {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub game: Option<String>,
     /// A ponder search (capability `ponder`): `position` has the expected move played, and the
-    /// search keeps to no limit (but the node's `maxTimeMs`) and doesn't answer until
-    /// `engine/ponderHit`, `engine/stop` or `$/cancelRequest`. Its limits count from the hit.
-    /// A node may stop at a depth, node or mate limit before the hit, but still waits for it.
+    /// search doesn't answer until `engine/ponderHit`, `engine/stop` or `$/cancelRequest` (or
+    /// the node's `maxTimeMs`). Its time counts from the hit. A node may stop searching at a
+    /// depth, node or mate limit before the hit, but still waits for it, and then answers at
+    /// once.
     #[serde(default, skip_serializing_if = "is_false")]
     pub ponder: bool,
 }
