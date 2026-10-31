@@ -167,6 +167,7 @@ pub struct SearchParams {
     /// A ponder search (capability `ponder`): `position` has the expected move played, and the
     /// search keeps to no limit (but the node's `maxTimeMs`) and doesn't answer until
     /// `engine/ponderHit`, `engine/stop` or `$/cancelRequest`. Its limits count from the hit.
+    /// A node may stop at a depth, node or mate limit before the hit, but still waits for it.
     #[serde(default, skip_serializing_if = "is_false")]
     pub ponder: bool,
 }

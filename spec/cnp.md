@@ -445,9 +445,11 @@ opponent's time as well as its own. This is UCI's `go ponder` and `ponderhit`.
 expected move played, and its `limits` are the ones the search should keep to once the move is
 played, `limits.clock` included, with the engine's own time as it stands, since its clock doesn't
 run on the opponent's time. Until the hit, the search keeps to none of its limits, sends
-`engine/progress` as usual, and doesn't answer, even when it has nothing more to search. Only
-the node's `maxTimeMs` ([6.3](#63-limits)) still holds, from the request, and the search answers
-at it as an infinite one does. A request that is wrong is answered at once, as for any search.
+`engine/progress` as usual, and doesn't answer, even when it has nothing more to search. A node
+may stop searching at a depth, node or mate limit before the hit and wait, since the hit would
+end the search at once anyway; what it must not do is answer. Only the node's `maxTimeMs`
+([6.3](#63-limits)) still holds, from the request, and the search answers at it as an infinite
+one does. A request that is wrong is answered at once, as for any search.
 
 **A hit.** `engine/ponderHit` says the expected move was played. Params: `{"id": …}`, the ponder
 search's request id. The result is `null`. From the moment the node receives it, the search keeps
