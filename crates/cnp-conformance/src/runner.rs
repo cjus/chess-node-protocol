@@ -318,15 +318,23 @@ pub fn capabilities(command: &[String], timeout: Duration) -> Result<BTreeSet<St
     Ok(names)
 }
 
-/// The capabilities a session needs that the node doesn't offer.
+/// What a session requires that the node doesn't give it: a capability it needs and the node
+/// doesn't offer, or one it needs absent (`!name`) and the node offers.
 pub fn missing(session: &Session, offered: &BTreeSet<String>) -> Vec<String> {
     session
         .requires
         .iter()
-        .filter(|name| !offered.contains(*name))
+        .filter(|name| match name.strip_prefix(ABSENT) {
+            Some(absent) => offered.contains(absent),
+            None => !offered.contains(*name),
+        })
         .cloned()
         .collect()
 }
+
+/// The prefix in `requires` of a capability the node must not offer, for a session that checks
+/// how a node without it refuses its requests (`!engine.ponder`).
+pub const ABSENT: &str = "!";
 
 fn is_notification(message: &Value) -> bool {
     message.get("method").is_some() && message.get("id").is_none()

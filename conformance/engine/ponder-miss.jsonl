@@ -1,0 +1,12 @@
+{"session": "ponder-miss", "description": "on a miss the client cancels the ponder search, and the next search isn't Busy because of it (spec 7.7)", "requires": ["engine", "engine.ponder"]}
+{"send": {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocol": "1.0", "client": {"name": "cnp-conformance", "version": "1.0"}}}}
+{"expect": {"id": 1, "result": {"protocol": "1.0", "node": {"name": "$string", "version": "$string", "license": "$string"}, "capabilities": "$object"}}}
+{"send": {"jsonrpc": "2.0", "id": 2, "method": "engine/search", "params": {"position": {"fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", "moves": ["e2e4", "e7e5"]}, "limits": {"depth": 2}, "ponder": true}}}
+{"comment": "The opponent played d7d5, not e7e5."}
+{"send": {"jsonrpc": "2.0", "method": "$/cancelRequest", "params": {"id": 2}}}
+{"send": {"jsonrpc": "2.0", "id": 3, "method": "engine/search", "params": {"position": {"fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", "moves": ["e2e4", "d7d5"]}, "limits": {"depth": 2}}}}
+{"expectAll": [{"id": 2, "error": {"code": -32800, "message": "$string"}}, {"id": 3, "result": {"bestMove": "$move", "ponderMs": "$absent"}}]}
+{"send": {"jsonrpc": "2.0", "id": 99, "method": "shutdown"}}
+{"expect": {"id": 99, "result": null}}
+{"send": {"jsonrpc": "2.0", "method": "exit"}}
+{"expectExit": 0}

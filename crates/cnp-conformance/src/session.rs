@@ -8,8 +8,9 @@
 //!
 //! `requires` lists the capabilities a node must offer for the session to apply (see
 //! [`crate::runner::capabilities`]): a domain (`engine`), one of its capabilities
-//! (`engine.rootMoves`), or a limit (`limits.maxDepth`). `timeoutMs` is how long each step may
-//! wait, 10 s if missing.
+//! (`engine.rootMoves`), or a limit (`limits.maxDepth`). A name after `!` is one the node must
+//! not offer (`!engine.ponder`), for a session about how a node without it refuses its
+//! requests. `timeoutMs` is how long each step may wait, 10 s if missing.
 //!
 //! Each line after it is one step, an object with one of these keys, and optionally a
 //! `comment`:
@@ -43,7 +44,7 @@ pub struct Session {
     pub name: String,
     /// What it checks, for people.
     pub description: Option<String>,
-    /// The capabilities it needs.
+    /// The capabilities it needs, and (after `!`) those it needs the node not to offer.
     pub requires: Vec<String>,
     /// How long each step may wait.
     pub timeout: Duration,
