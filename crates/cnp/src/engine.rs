@@ -9,6 +9,7 @@
 //! | `engine/techniques` | request | [`Techniques`]: no params → [`TechniquesResult`] |
 //! | `engine/levels` | request | [`Levels`]: no params → [`LevelsResult`] |
 //! | `engine/evaluate` | request | [`Evaluate`]: [`EvaluateParams`] → [`EvaluateResult`] |
+//! | `engine/ponderHit` | request | [`PonderHit`]: [`PonderHitParams`] → `null` |
 //!
 //! Positions and moves are chess, not any engine's internals: a FEN and the moves played
 //! from it, and moves in coordinate notation (`e2e4`, `e7e8q`). Every request stands alone:
@@ -17,6 +18,12 @@
 //!
 //! Scores are always from the point of view of the side to move, and say whether they are
 //! exact or a bound ([`Score`]).
+//!
+//! **Pondering** (spec, 7.7) is the one exchange that spans requests: a search with
+//! [`SearchParams::ponder`] runs on the opponent's time, keeping to none of its limits, until
+//! [`PonderHit`] says the expected move was played. On a miss the client cancels it and starts
+//! another. The pitfall is time: a ponder search's limits, the clock included, count from the
+//! hit, not from the request.
 
 use std::collections::BTreeMap;
 
@@ -67,6 +74,9 @@ pub struct EngineCapabilities {
     /// A position's evaluation, term by term (`engine/evaluate`).
     #[serde(default)]
     pub evaluate: bool,
+    /// Searching on the opponent's time (`ponder`, `engine/ponderHit`).
+    #[serde(default)]
+    pub ponder: bool,
 }
 
 /// The `engine/search` request: search a position and answer with the best move.
@@ -154,6 +164,11 @@ pub struct SearchParams {
     /// hash table between them. A node may ignore it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub game: Option<String>,
+    /// A ponder search (capability `ponder`): `position` has the expected move played, and the
+    /// search keeps to no limit (but the node's `maxTimeMs`) and doesn't answer until
+    /// `engine/ponderHit`, `engine/stop` or `$/cancelRequest`. Its limits count from the hit.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub ponder: bool,
 }
 
 impl SearchParams {
@@ -170,6 +185,7 @@ impl SearchParams {
             deterministic: false,
             progress_ms: None,
             game: None,
+            ponder: false,
         }
     }
 
@@ -376,7 +392,7 @@ pub struct SearchResult {
     /// The move to play, or `null` when the side to move has no legal move (checkmate or
     /// stalemate).
     pub best_move: Option<String>,
-    /// The reply the engine expects.
+    /// The reply the engine expects: the move to ponder on.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ponder: Option<String>,
     /// The best line's score. Missing when there is no legal move, or when the search was
@@ -395,6 +411,10 @@ pub struct SearchResult {
     pub nodes: u64,
     /// Time spent, in milliseconds.
     pub time_ms: u64,
+    /// For a ponder search, how much of `time_ms` came before `engine/ponderHit` (all of it if
+    /// none came). Missing for other searches.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ponder_ms: Option<u64>,
     /// Whether `engine/stop` ended the search before its limits.
     #[serde(default)]
     pub stopped: bool,
@@ -494,6 +514,29 @@ impl RequestMethod for Stop {
 #[serde(rename_all = "camelCase")]
 pub struct StopParams {
     /// The `engine/search` request's id.
+    pub id: Id,
+}
+
+/// The `engine/ponderHit` request (capability `ponder`): the move a ponder search expected was
+/// played, so it keeps to its limits from now on, keeping what it has searched, and answers as
+/// any search does.
+///
+/// A hit for a search that has already answered, never existed, or has already had its hit is
+/// not an error: the messages can cross. A hit for a running search that isn't a ponder search
+/// is `InvalidParams`.
+pub enum PonderHit {}
+
+impl RequestMethod for PonderHit {
+    const NAME: &'static str = "engine/ponderHit";
+    type Params = PonderHitParams;
+    type Result = ();
+}
+
+/// Which ponder search the expected move was played for.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PonderHitParams {
+    /// The ponder search's `engine/search` request id.
     pub id: Id,
 }
 

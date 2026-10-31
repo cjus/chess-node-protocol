@@ -130,3 +130,22 @@ fn bound_values_are_checked_later_in_the_session() {
     ));
     assert_eq!(passes, Outcome::Passed);
 }
+
+#[test]
+fn a_session_can_need_a_capability_absent() {
+    let session = session::parse(
+        r#"{"session": "absent", "requires": ["engine", "!engine.ponder"]}"#,
+        Path::new("inline.jsonl"),
+    )
+    .expect("a valid session");
+    let offered = |names: &[&str]| names.iter().map(|n| n.to_string()).collect();
+    assert_eq!(
+        missing(&session, &offered(&["engine"])),
+        Vec::<String>::new()
+    );
+    assert_eq!(
+        missing(&session, &offered(&["engine", "engine.ponder"])),
+        vec!["!engine.ponder".to_string()]
+    );
+    assert_eq!(missing(&session, &offered(&[])), vec!["engine".to_string()]);
+}

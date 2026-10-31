@@ -246,6 +246,7 @@ Every engine node answers `engine/search` with the limits `depth`, `nodes`, `tim
 | `chess960` | Positions with `"chess960": true`: Chess960 starting positions and castling |
 | `progress` | `progressMs`, and `engine/progress` |
 | `evaluate` | `engine/evaluate` |
+| `ponder` | `ponder`, and `engine/ponderHit`: searching on the opponent's time ([7.7](#77-pondering)) |
 
 ### 6.3 Limits
 
@@ -258,7 +259,7 @@ Every engine node answers `engine/search` with the limits `depth`, `nodes`, `tim
 | `maxNodes` | integer | none | The most nodes one search may visit |
 | `maxTimeMs` | integer | none | The longest one search may take. A search with no limits, or an infinite one, also ends here |
 | `maxMultipv` | integer | 1 | The most lines one search may return |
-| `maxConcurrentSearches` | integer | 1 | How many searches may run at once; one more is refused with `Busy` |
+| `maxConcurrentSearches` | integer | 1 | How many searches may run at once, ponder searches included; one more is refused with `Busy` |
 | `maxMessageBytes` | integer | 16777216 | The longest message the node reads |
 
 ## 7. The engine domain
@@ -271,6 +272,7 @@ Every engine node answers `engine/search` with the limits `depth`, `nodes`, `tim
 | `engine/techniques` | request | The search techniques that can be switched |
 | `engine/levels` | request | The playing levels and their ratings |
 | `engine/evaluate` | request | A position's evaluation without a search, term by term |
+| `engine/ponderHit` | request | The move a ponder search expected was played: search on the clock now |
 
 ### 7.1 `engine/search`
 
@@ -288,6 +290,7 @@ Params:
 | `deterministic` | boolean | `deterministic` | One thread and a cleared hash table, so the same request gives the same result, node counts included |
 | `progressMs` | integer | `progress` | Send `engine/progress` at most this often. Missing: no progress |
 | `game` | string | | A hint that searches with the same `game` belong to one game, so the node may keep its hash table between them. A node MAY ignore it |
+| `ponder` | boolean | `ponder` | Search on the opponent's time, until `engine/ponderHit` ([7.7](#77-pondering)) |
 
 `limits`, any of which may be combined; the search stops at the first reached:
 
@@ -308,13 +311,14 @@ Result:
 | Field | Type | |
 | --- | --- | --- |
 | `bestMove` | move or `null` | The move to play. `null` when the side to move has no legal move (checkmate or stalemate) |
-| `ponder` | move | The reply the engine expects, if it has one |
+| `ponder` | move | The reply the engine expects, if it has one: the move to ponder on ([7.7](#77-pondering)) |
 | `score` | score | The best line's score. Missing when there is no legal move, or when the search was stopped before it scored a line |
 | `pv` | array of moves | The best line, starting with the best move |
 | `depth` | integer | The depth completed |
 | `selDepth` | integer | The deepest any line went, extensions and quiescence included |
 | `nodes` | integer | Nodes searched, every thread together |
 | `timeMs` | integer | Time spent |
+| `ponderMs` | integer | For a ponder search, how much of `timeMs` came before `engine/ponderHit`: all of it if none came |
 | `stopped` | boolean | Whether `engine/stop` ended the search before its limits |
 | `lines` | array | When `multipv` was above 1: every line, the best first, each with `multipv` (its rank from 1), `score`, `pv`, `depth` and `selDepth`. The first is the same as `score` and `pv` |
 | `stats` | object | Optionally `hashFull` (thousandths) and `tbHits` (tablebase probes that gave a result) |
@@ -429,6 +433,44 @@ differently.
 An evaluation doesn't search, so it misses a piece about to be captured and doesn't know that a
 side is mated. To explain a search's score, evaluate the position at the end of its `pv`, which
 is where the score came from.
+
+### 7.7 Pondering
+
+Needs `ponder`. While the opponent thinks, an engine can search the position after the reply it
+expects (its last result's `ponder`). If the opponent plays that move, the engine goes on with
+the same search, on its own clock now, and keeps everything it has found: it has had the
+opponent's time as well as its own. This is UCI's `go ponder` and `ponderhit`.
+
+**A ponder search** is an `engine/search` with `"ponder": true`. Its `position` already has the
+expected move played, and its `limits` are the ones the search should keep to once the move is
+played, `limits.clock` included, with the engine's own time as it stands, since its clock doesn't
+run on the opponent's time. Until the hit, the search keeps to none of its limits, sends
+`engine/progress` as usual, and doesn't answer, even when it has nothing more to search. Only
+the node's `maxTimeMs` ([6.3](#63-limits)) still holds, from the request, and the search answers
+at it as an infinite one does. A request that is wrong is answered at once, as for any search.
+
+**A hit.** `engine/ponderHit` says the expected move was played. Params: `{"id": …}`, the ponder
+search's request id. The result is `null`. From the moment the node receives it, the search keeps
+to its limits: its `timeMs`, and its use of the clock, count from the hit, and a depth or node
+limit it has already passed ends it at once. It keeps its tree, and answers the `engine/search`
+as any search does, with `ponderMs` saying how long it pondered.
+
+```cnp
+→ {"jsonrpc": "2.0", "id": 14, "method": "engine/search", "params": {"position": {"fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", "moves": ["e2e4", "e7e5", "g1f3", "b8c6"]}, "limits": {"clock": {"white": {"timeMs": 175000, "incrementMs": 2000}, "black": {"timeMs": 168000, "incrementMs": 2000}}}, "ponder": true}}
+→ {"jsonrpc": "2.0", "id": 15, "method": "engine/ponderHit", "params": {"id": 14}}
+← {"jsonrpc": "2.0", "id": 15, "result": null}
+← {"jsonrpc": "2.0", "id": 14, "result": {"bestMove": "f1b5", "ponder": "a7a6", "score": {"cp": 33}, "pv": ["f1b5", "a7a6", "b5a4"], "depth": 22, "selDepth": 34, "nodes": 41200555, "timeMs": 9300, "ponderMs": 6100, "stopped": false}}
+```
+
+**A miss.** The opponent played something else. The client cancels the ponder search
+([4.1](#41-cancelling-a-request)) and starts a new one on the real position. A node that has read
+the `$/cancelRequest` MUST NOT refuse the next search with `Busy` because of the cancelled one,
+so the new search can follow the cancel at once.
+
+`engine/stop` ends a ponder search as it ends any other ([7.3](#73-enginestop)), before the hit or
+after it. A hit for a search that has already answered, or that never existed, or that has already
+had its hit, is not an error, because the messages can cross; its result is `null` and it does
+nothing. A hit for a running search that isn't a ponder search is `InvalidParams`.
 
 ## 8. The voice domain
 
@@ -690,5 +732,7 @@ These names are reserved, so that nothing else uses them:
   (cjus/chessgui#145); and hotwords (capability `hotwords`, on `voice/transcribe` and
   `voice/listen`) and a listen's `leadInMs`, so the client says what is likely to be said
   and how a short first word is kept, rather than the voice node knowing chess
-  (cjus/chessgui#226). Its design came from
+  (cjus/chessgui#226); and pondering (capability `ponder`, a search's `ponder` and its result's
+  `ponderMs`, and `engine/ponderHit`), so an engine can search on the opponent's time under a
+  game clock (#18, cjus/chessgui#319). Its design came from
   Solrac, a chess board that teaches, and cb2026, its engine.

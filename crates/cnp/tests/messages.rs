@@ -229,6 +229,46 @@ fn a_search_result_with_no_legal_move_has_a_null_best_move() {
 }
 
 #[test]
+fn a_ponder_search_says_so_and_its_hit_names_it() {
+    let mut params = SearchParams::new(Position::start().with_moves(["e2e4", "e7e5"]))
+        .limits(SearchLimits::depth(12));
+    params.ponder = true;
+    let value = serde_json::to_value(&params).unwrap();
+    assert_eq!(value["ponder"], json!(true));
+    assert_eq!(
+        serde_json::from_value::<SearchParams>(value).unwrap(),
+        params
+    );
+    // A search that isn't pondering leaves the flag out.
+    params.ponder = false;
+    assert_eq!(serde_json::to_value(&params).unwrap().get("ponder"), None);
+
+    let hit = Request::new::<engine::PonderHit>(8, &engine::PonderHitParams { id: Id::Number(7) });
+    let Message::Request(hit) = parse(Message::from(hit).to_value()) else {
+        panic!("not a request");
+    };
+    assert_eq!(hit.method, "engine/ponderHit");
+    assert_eq!(hit.params.unwrap(), json!({"id": 7}));
+
+    // Only a ponder search's result says how long it pondered.
+    let result: engine::SearchResult = serde_json::from_value(json!({
+        "bestMove": "g1f3", "pv": ["g1f3"], "depth": 9, "nodes": 900, "timeMs": 700,
+        "ponderMs": 500
+    }))
+    .unwrap();
+    assert_eq!(result.ponder_ms, Some(500));
+    let plain: engine::SearchResult = serde_json::from_value(json!({
+        "bestMove": "g1f3", "pv": ["g1f3"], "depth": 9, "nodes": 900, "timeMs": 700
+    }))
+    .unwrap();
+    assert_eq!(plain.ponder_ms, None);
+    assert_eq!(serde_json::to_value(&plain).unwrap().get("ponderMs"), None);
+    // The capability is off unless offered.
+    let offered: engine::EngineCapabilities = serde_json::from_value(json!({})).unwrap();
+    assert!(!offered.ponder);
+}
+
+#[test]
 fn an_evaluation_is_a_score_and_its_terms_for_each_side() {
     let result = engine::EvaluateResult {
         score: Score::cp(-1),
