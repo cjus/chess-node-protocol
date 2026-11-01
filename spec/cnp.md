@@ -446,9 +446,10 @@ end of its `pv` with `quiet`.
 
 **`quiet`.** The node plays out captures (and queen promotions, and evasions when in check) as
 its search does at its leaves, until the side to move does better to stop, and evaluates the
-position there. `quiet` in the result lists the moves it played. They are the node's best
-guess at a quiet position, not a search of the position: they settle what is hanging, not who
-is winning.
+position there. `quiet` in the result lists the moves it played. A capture the side to move
+needn't make is left alone when stopping is as good, as a search's leaf leaves it, so a
+position with captures on offer may need none played. The moves settle what is hanging, as
+the search would; they aren't a search of the position.
 
 **`pieces`.** Some engines evaluate with a neural network, which judges a position as a whole
 and has no terms to break it into; `terms` then come from another evaluation, which the search
@@ -459,12 +460,12 @@ is worth what its loss would cost. A position without one of its pieces may be o
 arise in a game, such as a side left in check: the value is still what the evaluation thinks
 of that piece there, and it is no more than that. Stockfish's `eval` shows the same measure.
 
-With cb2026's network after 1.e4 d5, where White's pawn and then Black's queen take on d5
-(three of its eight terms and three of its 28 pieces shown):
+With cb2026's network after 1.e4 d5 2.exd5, where Black's queen takes back on d5 (three of its
+eight terms and three of its 28 pieces shown):
 
 ```cnp
-→ {"jsonrpc": "2.0", "id": 14, "method": "engine/evaluate", "params": {"position": {"fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", "moves": ["e2e4", "d7d5"]}, "quiet": true, "pieces": true}}
-← {"jsonrpc": "2.0", "id": 14, "result": {"score": {"cp": -17}, "terms": [{"id": "material", "name": "Material", "white": 3850, "black": 3850}, {"id": "mobility", "name": "Mobility", "description": "Safe squares each piece can reach.", "white": -89, "black": -75}, {"id": "tempo", "name": "Tempo", "white": 10, "black": 0}], "quiet": ["e4d5", "d8d5"], "searchScore": {"cp": 34}, "pieces": [{"square": "d1", "value": 918}, {"square": "d5", "value": 912}, {"square": "f1", "value": 338}]}}
+→ {"jsonrpc": "2.0", "id": 14, "method": "engine/evaluate", "params": {"position": {"fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", "moves": ["e2e4", "d7d5", "e4d5"]}, "quiet": true, "pieces": true}}
+← {"jsonrpc": "2.0", "id": 14, "result": {"score": {"cp": -17}, "terms": [{"id": "material", "name": "Material", "white": 3850, "black": 3850}, {"id": "mobility", "name": "Mobility", "description": "Safe squares each piece can reach.", "white": -89, "black": -75}, {"id": "tempo", "name": "Tempo", "white": 10, "black": 0}], "quiet": ["d8d5"], "searchScore": {"cp": 34}, "pieces": [{"square": "d1", "value": 918}, {"square": "d5", "value": 912}, {"square": "f1", "value": 338}]}}
 ```
 
 The hand-crafted evaluation that `terms` break down thinks White is slightly worse (−17), and

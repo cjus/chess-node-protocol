@@ -313,7 +313,7 @@ fn an_evaluation_is_a_score_and_its_terms_for_each_side() {
 
 #[test]
 fn an_evaluation_can_settle_captures_and_value_each_piece() {
-    let position = engine::Position::start().with_moves(["e2e4", "d7d5"]);
+    let position = engine::Position::start().with_moves(["e2e4", "d7d5", "e4d5"]);
     // Nothing more asked: the flags stay out, as for a node that doesn't know them.
     let plain = engine::EvaluateParams::new(position.clone());
     let value = serde_json::to_value(&plain).unwrap();
@@ -335,7 +335,7 @@ fn an_evaluation_can_settle_captures_and_value_each_piece() {
     let result = engine::EvaluateResult {
         score: Score::cp(-17),
         terms: vec![],
-        quiet: Some(vec!["e4d5".to_string(), "d8d5".to_string()]),
+        quiet: Some(vec!["d8d5".to_string()]),
         search_score: Some(Score::cp(34)),
         pieces: Some(vec![engine::PieceValue {
             square: "d5".to_string(),
@@ -345,7 +345,7 @@ fn an_evaluation_can_settle_captures_and_value_each_piece() {
     let value = serde_json::to_value(&result).unwrap();
     assert_eq!(
         value,
-        json!({"score": {"cp": -17}, "terms": [], "quiet": ["e4d5", "d8d5"],
+        json!({"score": {"cp": -17}, "terms": [], "quiet": ["d8d5"],
                "searchScore": {"cp": 34}, "pieces": [{"square": "d5", "value": 912}]})
     );
     assert_eq!(
