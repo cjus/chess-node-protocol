@@ -15,7 +15,7 @@ conforms to CNP 1.0 if it passes every session that applies to it.
 | Directory | What it checks | Applies to |
 | --- | --- | --- |
 | `lifecycle/` | `initialize`, `ping`, `shutdown`, `exit`, cancelling, and the errors around them (spec 4, 5, 9) | Every node |
-| `engine/` | Searches, stop and cancel, each engine capability, and pondering's hit and miss (spec 7) | Engine nodes |
+| `engine/` | Searches, stop and cancel, each engine capability, pondering's hit and miss, and the search tree: reading it, its errors and limits, during a search and cancelled (spec 7) | Engine nodes |
 | `voice/` | Voices, models, refusing bad requests, and audio for a listen that isn't there (spec 8) | Voice nodes |
 | `preferences/` | The draft preferences extension's read (`spec/preferences.md`) | Nodes that keep preferences |
 | `games/` | The draft games extension: a save, its retry, a reused version, get, list, searching, deleting, importing and a game's source (`spec/games.md`) | Nodes that keep games (searching, deleting, importing and sources: those that offer them) |

@@ -10,6 +10,8 @@
 //! | `engine/levels` | request | [`Levels`]: no params → [`LevelsResult`] |
 //! | `engine/evaluate` | request | [`Evaluate`]: [`EvaluateParams`] → [`EvaluateResult`] |
 //! | `engine/ponderHit` | request | [`PonderHit`]: [`PonderHitParams`] → `null` |
+//! | `engine/tree` | request | [`Tree`]: [`TreeParams`] → [`TreeResult`] |
+//! | `engine/treeNode` | request | [`TreeNodePage`]: [`TreeNodeParams`] → [`TreeNodeResult`] |
 //!
 //! Positions and moves are chess, not any engine's internals: a FEN and the moves played
 //! from it, and moves in coordinate notation (`e2e4`, `e7e8q`). Every request stands alone:
@@ -24,6 +26,13 @@
 //! says the expected move was played. On a miss the client cancels it and starts another. The
 //! pitfall is time: a ponder search's time limits, the clock included, count from the hit, not
 //! from the request.
+//!
+//! **The search tree** (spec, 7.8) is the one thing a node keeps for a client: [`Tree`] searches
+//! a position, records which moves the search looked at and what it decided about each, and
+//! answers with a handle and the root's children; [`TreeNodePage`] reads one node and a page of
+//! its children by the moves that lead to it. A tree is too large for one message, so it is
+//! read a part at a time. The handle is a cache, not state a client can rely on: it expires,
+//! and then the client asks for the tree again.
 
 use std::collections::BTreeMap;
 
@@ -84,6 +93,9 @@ pub struct EngineCapabilities {
     /// Searching on the opponent's time (`ponder`, `engine/ponderHit`).
     #[serde(default)]
     pub ponder: bool,
+    /// A search's tree, kept for a while (`engine/tree`, `engine/treeNode`).
+    #[serde(default)]
+    pub tree: bool,
 }
 
 /// The `engine/search` request: search a position and answer with the best move.
@@ -744,6 +756,324 @@ pub struct Term {
     pub white: i32,
     /// What it is worth to Black, in centipawns from Black's point of view.
     pub black: i32,
+}
+
+/// How many plies from the root a tree records when [`TreeParams::plies`] doesn't say: the
+/// root's moves and the replies to them.
+pub const DEFAULT_TREE_PLIES: u32 = 2;
+
+/// The `engine/tree` request (capability `tree`): search a position to a depth, keep the
+/// search's tree for a while, and answer with a handle to it, the search's result, and the
+/// root's children.
+///
+/// A tree says which moves the search looked at and what it decided about each: which reply
+/// refuted a move, which moves it set aside without a search, which it searched shallower or
+/// again. It is the answer to a player's "why not that move?".
+///
+/// **Pitfall:** a tree is recorded only near the root ([`TreeParams::plies`]), but the search
+/// goes on below it; a node's score comes from the whole search. A node may also stop
+/// recording at a cap of its own ([`Recorded::truncated`]): the search's later decisions,
+/// the later root moves' among them, are then missing.
+pub enum Tree {}
+
+impl RequestMethod for Tree {
+    const NAME: &'static str = "engine/tree";
+    type Params = TreeParams;
+    type Result = TreeResult;
+}
+
+/// What to search, and how much of its tree to keep.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TreeParams {
+    /// The position.
+    pub position: Position,
+    /// Search this many plies deep, from 1 to the node's `maxTreeDepth`.
+    pub depth: u32,
+    /// Record the nodes up to this many plies from the root, from 1 to the node's
+    /// `maxTreePlies`. Missing: [`DEFAULT_TREE_PLIES`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plies: Option<u32>,
+    /// How many of the root's children to answer with. Missing: all of them.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub limit: Option<u32>,
+}
+
+impl TreeParams {
+    /// A tree of `position` searched `depth` plies deep, with the default plies recorded.
+    pub fn new(position: Position, depth: u32) -> TreeParams {
+        TreeParams {
+            position,
+            depth,
+            plies: None,
+            limit: None,
+        }
+    }
+
+    /// How many plies from the root the tree records: [`TreeParams::plies`], or
+    /// [`DEFAULT_TREE_PLIES`].
+    pub fn recorded_plies(&self) -> u32 {
+        self.plies.unwrap_or(DEFAULT_TREE_PLIES)
+    }
+}
+
+/// A recorded tree: its handle, the search's result, and the root with its first children.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TreeResult {
+    /// The tree's handle, for `engine/treeNode` on this connection.
+    pub tree: String,
+    /// The handle expires once this many milliseconds pass with no request for the tree: from
+    /// this answer, and again from each `engine/treeNode`. A node may drop it sooner, to keep
+    /// newer trees.
+    pub expires_ms: u64,
+    /// The depth searched, in plies.
+    pub depth: u32,
+    /// The deepest any line went, extensions and quiescence included.
+    #[serde(default)]
+    pub sel_depth: u32,
+    /// Nodes searched.
+    pub nodes: u64,
+    /// Time spent, in milliseconds.
+    pub time_ms: u64,
+    /// The best move, or `null` when the side to move has no legal move.
+    pub best_move: Option<String>,
+    /// The best move's score. Missing when there is no legal move.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub score: Option<Score>,
+    /// The best line, starting with the best move.
+    #[serde(default)]
+    pub pv: Vec<String>,
+    /// What the tree holds.
+    pub recorded: Recorded,
+    /// The root: the position searched.
+    pub root: TreeNode,
+    /// The root's children, the first [`TreeParams::limit`] of them, in the order the search
+    /// first tried them.
+    #[serde(default)]
+    pub children: Vec<TreeNode>,
+}
+
+/// What a tree holds.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Recorded {
+    /// How many plies from the root were recorded.
+    pub plies: u32,
+    /// How many nodes the tree holds, the root included.
+    pub nodes: u64,
+    /// How many decisions the tree holds, at every node together.
+    pub decisions: u64,
+    /// Whether the node stopped recording before the search ended, at a cap of its own. The
+    /// tree then holds what the search decided until then, and nothing after.
+    #[serde(default)]
+    pub truncated: bool,
+}
+
+/// One node of a search tree: a position the search reached, how it searched it, and what it
+/// decided there.
+///
+/// Scores and windows are from the point of view of the side to move at the node, so a child's
+/// window is its parent's turned round: `[-beta, -alpha]`.
+///
+/// **Pitfall:** a node may be searched more than once (shallower first, then again; or with
+/// a narrow window, then a wider one). It is shown as its last search, the one whose score
+/// counted: its `depth`, `alpha`, `beta`, `score`, children and [`Decision`]s are that
+/// search's, after the decisions that say how it came to be searched that way.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TreeNode {
+    /// The move that reaches it from its parent, in coordinate notation. `None` at the root.
+    #[serde(rename = "move", default, skip_serializing_if = "Option::is_none")]
+    pub mv: Option<String>,
+    /// How many plies deep it was searched (the depth still to go when it was reached).
+    pub depth: u32,
+    /// The lower edge of its window, the score its side to move already had elsewhere. `None`
+    /// when the window had no lower edge, and at the root.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub alpha: Option<Score>,
+    /// The upper edge of its window, the score the other side already had elsewhere. `None`
+    /// when the window had no upper edge, and at the root.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub beta: Option<Score>,
+    /// Its score, with its bound: a lower bound at or above `beta`, an upper bound at or
+    /// below `alpha`, and otherwise exact. `None` when the recording ended before the node
+    /// returned.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub score: Option<Score>,
+    /// How many of its children the tree holds.
+    pub child_count: u32,
+    /// How many nodes the tree holds below it, at every recorded ply.
+    pub subtree: u64,
+    /// What the search decided about it, in the order it decided.
+    #[serde(default)]
+    pub decisions: Vec<Decision>,
+}
+
+/// One decision of the search about a node, in alpha-beta's terms rather than any engine's.
+///
+/// A decision with a move names a move from its own node: the reply that refuted it, a move
+/// left out, a capture that proved a cutoff. One without is about the node itself.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Decision {
+    /// What was decided.
+    #[serde(flatten)]
+    pub kind: DecisionKind,
+    /// The id of the technique that decided it, as `engine/techniques` lists it, from a node
+    /// that offers `techniques`. Missing when no switchable technique applies.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub technique: Option<String>,
+}
+
+impl Decision {
+    /// A decision of this kind, with no technique named.
+    pub fn new(kind: DecisionKind) -> Decision {
+        Decision {
+            kind,
+            technique: None,
+        }
+    }
+
+    /// The same decision, made by the technique `id`.
+    pub fn by(mut self, id: impl Into<String>) -> Decision {
+        self.technique = Some(id.into());
+        self
+    }
+}
+
+/// The kinds of decision (spec, 7.8). In JSON, `kind` and the kind's own fields.
+///
+/// Later minor versions may add kinds: a client ignores one it doesn't know, which this crate
+/// reads as [`DecisionKind::Unknown`].
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(
+    tag = "kind",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
+pub enum DecisionKind {
+    /// `mv` scored at or above beta, the `order`-th move searched (from 1), so the node's
+    /// other moves weren't searched: `mv` refutes the move that led here.
+    Cutoff {
+        /// The move, from this node.
+        #[serde(rename = "move")]
+        mv: String,
+        /// Its place among the moves searched at this node, from 1.
+        order: u32,
+    },
+    /// An earlier search's result for this position, kept in the engine's table, settled it
+    /// without a search of its own.
+    Table,
+    /// Endgame tablebases settled it.
+    Tablebase,
+    /// Even passing, as if the side to move could skip its turn, kept the score at or above
+    /// beta, so the node wasn't searched further.
+    NullMove,
+    /// The node was settled before any of its moves was searched, by an estimate that the
+    /// search wouldn't change the outcome. Its score's bound says which side of the window.
+    NodePruned {
+        /// The capture whose shallower search proved it, when one did.
+        #[serde(rename = "move", default, skip_serializing_if = "Option::is_none")]
+        mv: Option<String>,
+    },
+    /// `mv` was left out without a search, as a move that couldn't change the outcome.
+    MovePruned {
+        /// The move, from this node.
+        #[serde(rename = "move")]
+        mv: String,
+    },
+    /// The node was searched this many plies shallower than its place called for, its move
+    /// judged unlikely to change the outcome.
+    Reduced {
+        /// How many plies shallower.
+        plies: u32,
+    },
+    /// The node was searched this many plies deeper than its place called for, its move judged
+    /// to matter more than most, such as a forced one.
+    Extended {
+        /// How many plies deeper.
+        plies: u32,
+    },
+    /// The node was searched again.
+    Research {
+        /// Why.
+        reason: ResearchReason,
+    },
+    /// A kind this crate doesn't know, from a later version. Only read, never sent.
+    #[serde(other)]
+    Unknown,
+}
+
+/// Why a node was searched again.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ResearchReason {
+    /// A shallower search's score was above alpha, so it was searched again at its full depth.
+    Depth,
+    /// A search with a narrower window scored inside the full one, so it was searched again
+    /// with the full window to find its exact score.
+    Window,
+    /// A reason this crate doesn't know, from a later version. Only read, never sent.
+    #[serde(other)]
+    Unknown,
+}
+
+/// The `engine/treeNode` request (capability `tree`): one node of a recorded tree, and a page
+/// of its children.
+///
+/// A handle the node no longer keeps is [`code::EXPIRED`](crate::code::EXPIRED), and a path
+/// that leads to no node of the tree is `InvalidParams`.
+pub enum TreeNodePage {}
+
+impl RequestMethod for TreeNodePage {
+    const NAME: &'static str = "engine/treeNode";
+    type Params = TreeNodeParams;
+    type Result = TreeNodeResult;
+}
+
+/// Which node to read, and which of its children.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TreeNodeParams {
+    /// The tree's handle, from `engine/tree`.
+    pub tree: String,
+    /// The moves from the root to the node, in coordinate notation. Empty: the root.
+    #[serde(default)]
+    pub path: Vec<String>,
+    /// How many children to skip, in the order the search first tried them. Missing: 0.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub offset: Option<u32>,
+    /// How many children to answer with after those; 0 for the node alone. Missing: the rest.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub limit: Option<u32>,
+}
+
+impl TreeNodeParams {
+    /// The node `path` leads to in `tree`, with all its children.
+    pub fn new<S: Into<String>>(
+        tree: impl Into<String>,
+        path: impl IntoIterator<Item = S>,
+    ) -> TreeNodeParams {
+        TreeNodeParams {
+            tree: tree.into(),
+            path: path.into_iter().map(Into::into).collect(),
+            offset: None,
+            limit: None,
+        }
+    }
+}
+
+/// A node, and a page of its children.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TreeNodeResult {
+    /// The node. Its `child_count` is how many children it has in all.
+    pub node: TreeNode,
+    /// Its children from `offset`, at most `limit` of them, in the order the search first
+    /// tried them. Empty past the last.
+    #[serde(default)]
+    pub children: Vec<TreeNode>,
 }
 
 /// Whether `text` has the form of a move in coordinate notation: two squares, and a promotion

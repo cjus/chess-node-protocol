@@ -1,0 +1,17 @@
+{"session": "tree", "description": "engine/tree answers with a handle, the search's result and the root's first children, and engine/treeNode reads the root and a child by its path, a page at a time (spec 7.8)", "requires": ["engine", "engine.tree"]}
+{"send": {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocol": "1.0", "client": {"name": "cnp-conformance", "version": "1.0"}}}}
+{"expect": {"id": 1, "result": {"protocol": "1.0", "node": {"name": "$string", "version": "$string", "license": "$string"}, "capabilities": "$object"}}}
+{"send": {"jsonrpc": "2.0", "id": 2, "method": "engine/tree", "params": {"position": {"fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", "moves": ["e2e4", "e7e5"]}, "depth": 4, "plies": 2, "limit": 1}}}
+{"expect": {"id": 2, "result": {"tree": "$bind:TREE", "expiresMs": "$integer", "depth": 4, "nodes": "$integer", "timeMs": "$integer", "bestMove": "$move", "score": "$object", "pv": "$array", "recorded": {"plies": 2, "nodes": "$integer", "decisions": "$integer", "truncated": false}, "root": {"move": "$absent", "depth": 4, "score": "$object", "childCount": "$integer", "subtree": "$integer", "decisions": "$array"}, "children": [{"move": "$bind:FIRST", "depth": "$integer", "childCount": "$integer", "subtree": "$integer", "decisions": "$array"}]}}}
+{"comment": "The root again, and its first child, which must be the same."}
+{"send": {"jsonrpc": "2.0", "id": 3, "method": "engine/treeNode", "params": {"tree": "$ref:TREE", "path": [], "limit": 1}}}
+{"expect": {"id": 3, "result": {"node": {"move": "$absent", "depth": 4, "childCount": "$integer"}, "children": [{"move": "$ref:FIRST"}]}}}
+{"comment": "The first child alone, with a limit of 0, then with all its children."}
+{"send": {"jsonrpc": "2.0", "id": 4, "method": "engine/treeNode", "params": {"tree": "$ref:TREE", "path": ["$ref:FIRST"], "limit": 0}}}
+{"expect": {"id": 4, "result": {"node": {"move": "$ref:FIRST", "depth": "$integer", "childCount": "$integer", "subtree": "$integer", "decisions": "$array"}, "children": []}}}
+{"send": {"jsonrpc": "2.0", "id": 5, "method": "engine/treeNode", "params": {"tree": "$ref:TREE", "path": ["$ref:FIRST"]}}}
+{"expect": {"id": 5, "result": {"node": {"move": "$ref:FIRST"}, "children": "$array"}}}
+{"send": {"jsonrpc": "2.0", "id": 99, "method": "shutdown"}}
+{"expect": {"id": 99, "result": null}}
+{"send": {"jsonrpc": "2.0", "method": "exit"}}
+{"expectExit": 0}

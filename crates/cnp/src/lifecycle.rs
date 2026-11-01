@@ -195,6 +195,15 @@ pub struct Limits {
     /// The longest message the node reads, in bytes. [`DEFAULT_MAX_MESSAGE_BYTES`] if missing.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_message_bytes: Option<u64>,
+    /// The deepest `engine/tree` search, in plies. `max_depth` if missing.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_tree_depth: Option<u32>,
+    /// The most plies from the root an `engine/tree` records. No limit if missing.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_tree_plies: Option<u32>,
+    /// How many `engine/tree` searches may run at once, besides the searches. 1 if missing.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_concurrent_trees: Option<u32>,
 }
 
 impl Limits {
@@ -211,6 +220,16 @@ impl Limits {
     /// The longest message the node reads.
     pub fn message_bytes(&self) -> u64 {
         self.max_message_bytes.unwrap_or(DEFAULT_MAX_MESSAGE_BYTES)
+    }
+
+    /// The deepest `engine/tree` search: `max_tree_depth`, or else `max_depth`, or none.
+    pub fn tree_depth(&self) -> Option<u32> {
+        self.max_tree_depth.or(self.max_depth)
+    }
+
+    /// How many `engine/tree` searches may run at once.
+    pub fn concurrent_trees(&self) -> u32 {
+        self.max_concurrent_trees.unwrap_or(1)
     }
 }
 

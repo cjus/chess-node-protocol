@@ -1,0 +1,18 @@
+{"session": "tree-errors", "description": "a handle the node never gave is Expired, a path to no node of the tree and a depth of 0 are InvalidParams, and an invalid FEN is InvalidPosition (spec 7.8, 9)", "requires": ["engine", "engine.tree"]}
+{"send": {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocol": "1.0", "client": {"name": "cnp-conformance", "version": "1.0"}}}}
+{"expect": {"id": 1, "result": {"protocol": "1.0", "node": {"name": "$string", "version": "$string", "license": "$string"}, "capabilities": "$object"}}}
+{"send": {"jsonrpc": "2.0", "id": 2, "method": "engine/treeNode", "params": {"tree": "never-given", "path": []}}}
+{"expect": {"id": 2, "error": {"code": -32018, "message": "$string"}}}
+{"send": {"jsonrpc": "2.0", "id": 3, "method": "engine/tree", "params": {"position": {"fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"}, "depth": 0}}}
+{"expect": {"id": 3, "error": {"code": -32602, "message": "$string"}}}
+{"send": {"jsonrpc": "2.0", "id": 4, "method": "engine/tree", "params": {"position": {"fen": "not a fen"}, "depth": 2}}}
+{"expect": {"id": 4, "error": {"code": -32011, "message": "$string"}}}
+{"send": {"jsonrpc": "2.0", "id": 5, "method": "engine/tree", "params": {"position": {"fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"}, "depth": 2, "plies": 1, "limit": 0}}}
+{"expect": {"id": 5, "result": {"tree": "$bind:TREE", "children": []}}}
+{"comment": "No root move goes from e1 to e8, and the tree records one ply only."}
+{"send": {"jsonrpc": "2.0", "id": 6, "method": "engine/treeNode", "params": {"tree": "$ref:TREE", "path": ["e1e8"]}}}
+{"expect": {"id": 6, "error": {"code": -32602, "message": "$string"}}}
+{"send": {"jsonrpc": "2.0", "id": 99, "method": "shutdown"}}
+{"expect": {"id": 99, "result": null}}
+{"send": {"jsonrpc": "2.0", "method": "exit"}}
+{"expectExit": 0}

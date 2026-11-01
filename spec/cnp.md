@@ -43,7 +43,10 @@ The words MUST, MUST NOT, SHOULD, SHOULD NOT and MAY are used as in
   request can be sent again, and a reconnection loses nothing. Hints that only make a node
   faster are allowed, such as "the same game as before", because a node that ignores them still
   answers correctly. Durations are counted from when the node receives the request, never as
-  clock times, since clocks on different machines differ.
+  clock times, since clocks on different machines differ. The one exception is a search tree's
+  handle ([7.8](#78-the-search-tree)), which names a tree an earlier request recorded, so that a
+  client can read a large tree a part at a time. It is a cache: a client that has lost it asks
+  for the tree again.
 - **Each side says what it supports.** A node lists its capabilities and limits when the
   connection starts, so an engine can implement part of the protocol, and a client knows what
   to offer.
@@ -249,6 +252,7 @@ Every engine node answers `engine/search` with the limits `depth`, `nodes`, `tim
 | `quiet` | `quiet` on `engine/evaluate`: settling captures before evaluating ([7.6](#76-engineevaluate)) |
 | `pieces` | `pieces` on `engine/evaluate`, and `searchScore` in its result: what each piece is worth to the search's evaluation ([7.6](#76-engineevaluate)) |
 | `ponder` | `ponder`, and `engine/ponderHit`: searching on the opponent's time ([7.7](#77-pondering)) |
+| `tree` | `engine/tree` and `engine/treeNode`: a search's tree, kept for a while ([7.8](#78-the-search-tree)) |
 
 ### 6.3 Limits
 
@@ -263,6 +267,9 @@ Every engine node answers `engine/search` with the limits `depth`, `nodes`, `tim
 | `maxMultipv` | integer | 1 | The most lines one search may return |
 | `maxConcurrentSearches` | integer | 1 | How many searches may run at once, ponder searches included; one more is refused with `Busy` |
 | `maxMessageBytes` | integer | 16777216 | The longest message the node reads |
+| `maxTreeDepth` | integer | `maxDepth` | The deepest `engine/tree` search, in plies |
+| `maxTreePlies` | integer | none | The most plies from the root an `engine/tree` records |
+| `maxConcurrentTrees` | integer | 1 | How many `engine/tree` searches may run at once, besides the searches; one more is refused with `Busy` |
 
 ## 7. The engine domain
 
@@ -275,6 +282,8 @@ Every engine node answers `engine/search` with the limits `depth`, `nodes`, `tim
 | `engine/levels` | request | The playing levels and their ratings |
 | `engine/evaluate` | request | A position's evaluation without a search, term by term |
 | `engine/ponderHit` | request | The move a ponder search expected was played: search on the clock now |
+| `engine/tree` | request | Search a position and keep its tree for a while |
+| `engine/treeNode` | request | One node of a kept tree, and a page of its children |
 
 ### 7.1 `engine/search`
 
@@ -512,6 +521,147 @@ after it. A hit for a search that has already answered, or that never existed, o
 had its hit, is not an error, because the messages can cross; its result is `null` and it does
 nothing. A hit for a running search that isn't a ponder search is `InvalidParams`.
 
+### 7.8 The search tree
+
+Needs `tree`. A search's tree says which moves the search looked at and what it decided about
+each: which reply refuted a move, which moves it left out without a search, which it searched
+shallower, deeper or again. It answers a player's "why not that move?". A tree has hundreds or
+thousands of nodes, so the node keeps it for a while and the client reads it a part at a time:
+`engine/tree` searches a position and answers with a handle, the search's result and the root's
+children, and `engine/treeNode` reads any node of the tree and a page of its children.
+
+The handle is the one exception to requests standing alone ([1](#1-design)): it names a tree an
+earlier request recorded. It is a cache, good only on the connection that asked for it, and it
+expires. A client whose handle has expired, or that has reconnected, asks for the tree again. A
+node SHOULD record a tree as a deterministic search does (one thread, a cleared hash table, the
+default techniques), so that the same request gives the same tree.
+
+**`engine/tree`.** Params:
+
+| Field | Type | |
+| --- | --- | --- |
+| `position` | object | The position ([2](#2-conventions)) |
+| `depth` | integer | Search this many plies deep, from 1 to `maxTreeDepth` ([6.3](#63-limits)) |
+| `plies` | integer | Record the nodes up to this many plies from the root, from 1 to `maxTreePlies`. Missing: 2, the root's moves and the replies to them |
+| `limit` | integer | How many of the root's children to answer with. Missing: all of them |
+
+A tree's search is a full-strength search with the node's default techniques. A position whose
+FEN isn't valid, or with a move that isn't legal, is answered with `InvalidPosition`; a `depth`
+or `plies` of 0 with `InvalidParams`, and one beyond the node's limits with `LimitExceeded`.
+
+A tree's search counts toward `maxConcurrentTrees`, not `maxConcurrentSearches`, so that a
+client can ask for a tree while the engine plays. One more is refused with `Busy`, but, as for
+searches ([7.7](#77-pondering)), not because of a tree whose `$/cancelRequest` the node has read.
+A cancelled tree answers `Cancelled` and keeps nothing. `engine/stop` doesn't end a tree's
+search, since a tree is wanted whole or not at all. A tree's search keeps to the node's
+`maxTimeMs` as every search does, and one that reaches it is answered with `LimitExceeded`.
+
+Result:
+
+| Field | Type | |
+| --- | --- | --- |
+| `tree` | string | The tree's handle, for `engine/treeNode` on this connection |
+| `expiresMs` | integer | The handle expires once this long passes with no request for the tree: from this answer, and again from each `engine/treeNode` for it. A node MAY drop a tree sooner, to keep newer ones |
+| `depth`, `selDepth`, `nodes`, `timeMs` | integers | As in a search's result ([7.1](#71-enginesearch)) |
+| `bestMove` | move or `null` | The best move. `null` when the side to move has no legal move |
+| `score` | score | The best move's score. Missing when there is no legal move |
+| `pv` | array of moves | The best line, starting with the best move |
+| `recorded` | object | What the tree holds: `plies`; `nodes`, the root included; `decisions`, at every node together; and `truncated`, whether the node stopped recording at a cap of its own before the search ended. A truncated tree holds what the search decided until then and nothing after, the later root moves' nodes among it |
+| `root` | node | The root, the position searched (below) |
+| `children` | array of nodes | The root's children, the first `limit` of them, in the order the search first tried them |
+
+A position with no legal move is answered at once, as a search is: `bestMove` is `null`, there
+is no `score`, `depth` is 0, and the tree is its root alone.
+
+**A node** of the tree is a position the search reached. The search may search a node more than
+once: shallower first and then again, or with a narrow window and then a wider one. A node is
+shown as its last search, the one whose score counted: its window, its score, its children and
+its decisions are that search's, after the decisions that say how it came to be searched that
+way.
+
+| Field | Type | |
+| --- | --- | --- |
+| `move` | move | The move that reaches it from its parent. Missing at the root |
+| `depth` | integer | How many plies deep it was searched: the depth still to go when it was reached |
+| `alpha`, `beta` | scores | Its window: the score the side to move already had elsewhere (`alpha`), and the score the other side already had (`beta`), always exact. An edge is left out when the window had none on that side |
+| `score` | score | Its score, with its bound: `lower` at or above `beta` (the side to move found enough, so the move that led here is refuted), `upper` at or below `alpha` (no better for the side to move than what it already had), and otherwise exact. Missing when the recording ended before the node returned |
+| `childCount` | integer | How many of its children the tree holds |
+| `subtree` | integer | How many nodes the tree holds below it, at every recorded ply |
+| `decisions` | array | What the search decided about it, in the order it decided (below) |
+
+Scores and windows are from the point of view of the side to move at the node, as everywhere
+([2](#2-conventions)), so a child's window is its parent's turned round, and a mate is counted
+from the node. A node's score comes from the whole search, below the recorded plies too.
+
+**Decisions** are alpha-beta's, not any engine's, so a client can say what each means without
+knowing the engine. Each has a `kind`, the fields of its kind, and optionally `technique`: the
+id of the technique that decided it, as `engine/techniques` lists it ([7.4](#74-enginetechniques)),
+from a node that offers `techniques`, so a client can name it and link to it. A decision's
+`move` is always a move from its own node.
+
+| Kind | Fields | What the search decided |
+| --- | --- | --- |
+| `cutoff` | `move`, `order` | `move` scored at or above `beta`, the `order`-th move searched (from 1), so the node's other moves weren't searched: `move` refutes the move that led here |
+| `table` | | An earlier search's result for this position, kept in the engine's table, settled it without a search of its own |
+| `tablebase` | | Endgame tablebases settled it |
+| `nullMove` | | Even passing, as if the side to move could skip its turn, kept its score at or above `beta`, so it wasn't searched further |
+| `nodePruned` | `move` (optional) | It was settled before any of its moves was searched, by an estimate that a search wouldn't change the outcome. `move`, when there is one, is the capture whose shallower search proved it. Its score's bound says on which side of the window |
+| `movePruned` | `move` | `move` was left out without a search, as a move that couldn't change the outcome |
+| `reduced` | `plies` | It was searched this many plies shallower than its place called for, its move judged unlikely to change the outcome |
+| `extended` | `plies` | It was searched this many plies deeper than its place called for, its move judged to matter more than most, such as a forced one |
+| `research` | `reason` | It was searched again: `depth`, at its full depth, after a shallower search scored above `alpha`; or `window`, with a wider window, after a narrower one couldn't give its exact score |
+
+A client MUST ignore a decision of a kind it doesn't know, and a `research` with a `reason` it
+doesn't know: later minor versions may add them.
+
+With cb2026's tree of the position in [7.1](#71-enginesearch), three of its 27 root moves asked
+for, and its line shortened:
+
+```cnp
+→ {"jsonrpc": "2.0", "id": 16, "method": "engine/tree", "params": {"position": {"fen": "r1bqkbnr/pppp1ppp/2n5/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 2 3"}, "depth": 16, "plies": 3, "limit": 3}}
+← {"jsonrpc": "2.0", "id": 16, "result": {"tree": "t1", "expiresMs": 300000, "depth": 16, "selDepth": 26, "nodes": 1066155, "timeMs": 939, "bestMove": "f1b5", "score": {"cp": 27}, "pv": ["f1b5", "a7a6", "b5c6", "d7c6"], "recorded": {"plies": 3, "nodes": 559, "decisions": 956, "truncated": false}, "root": {"depth": 16, "alpha": {"cp": 4}, "beta": {"cp": 54}, "score": {"cp": 27}, "childCount": 27, "subtree": 558, "decisions": []}, "children": [{"move": "d2d4", "depth": 15, "alpha": {"cp": -54}, "beta": {"cp": -4}, "score": {"cp": -16}, "childCount": 32, "subtree": 87, "decisions": []}, {"move": "f1b5", "depth": 15, "alpha": {"cp": -54}, "beta": {"cp": -16}, "score": {"cp": -27}, "childCount": 30, "subtree": 91, "decisions": [{"kind": "research", "reason": "window", "technique": "pvs"}]}, {"move": "f1c4", "depth": 15, "alpha": {"cp": -28}, "beta": {"cp": -27}, "score": {"cp": -27, "bound": "lower"}, "childCount": 1, "subtree": 34, "decisions": [{"kind": "cutoff", "move": "g8f6", "order": 1, "technique": "alphabeta"}]}]}}
+```
+
+The search tried d4 first, which scored 16 for White (−16 for Black, who is to move after it).
+Bb5, searched first with a null window just above d4's score, beat it, so it was searched again
+with the root's whole window: 27, exact, the best. Bc4 was refuted by the first reply tried, Nf6: at least −27 for
+Black, so no better for White than Bb5.
+
+**`engine/treeNode`.** Params:
+
+| Field | Type | |
+| --- | --- | --- |
+| `tree` | string | The tree's handle |
+| `path` | array of moves | The moves from the root to the node. Missing or empty: the root |
+| `offset` | integer | How many of the node's children to skip, in the order the search first tried them. Missing: 0 |
+| `limit` | integer | How many children to answer with after those; 0 for the node alone. Missing: the rest |
+
+The result is `node`, the node, whose `childCount` says how many children it has in all, and
+`children`, those from `offset`, at most `limit` of them, which is empty past the last. A node
+answers `engine/treeNode` promptly, even while a search or a tree's search runs.
+
+A handle the node doesn't keep is answered with `Expired`: the tree expired, or the node dropped
+it for newer ones, or never gave the handle. A `path` that leads to no node of the tree is
+`InvalidParams`.
+
+The reply that refuted Bc4, searched a ply shallower than its place called for (cb2026 does
+that to a hash move that beats `beta` without being the only good move), and then two of Bb5's
+replies, the second and the third:
+
+```cnp
+→ {"jsonrpc": "2.0", "id": 17, "method": "engine/treeNode", "params": {"tree": "t1", "path": ["f1c4"]}}
+← {"jsonrpc": "2.0", "id": 17, "result": {"node": {"move": "f1c4", "depth": 15, "alpha": {"cp": -28}, "beta": {"cp": -27}, "score": {"cp": -27, "bound": "lower"}, "childCount": 1, "subtree": 34, "decisions": [{"kind": "cutoff", "move": "g8f6", "order": 1, "technique": "alphabeta"}]}, "children": [{"move": "g8f6", "depth": 13, "alpha": {"cp": 27}, "beta": {"cp": 28}, "score": {"cp": 27, "bound": "upper"}, "childCount": 33, "subtree": 33, "decisions": [{"kind": "reduced", "plies": 1, "technique": "negext"}]}]}}
+→ {"jsonrpc": "2.0", "id": 18, "method": "engine/treeNode", "params": {"tree": "t1", "path": ["f1b5"], "offset": 1, "limit": 2}}
+← {"jsonrpc": "2.0", "id": 18, "result": {"node": {"move": "f1b5", "depth": 15, "alpha": {"cp": -54}, "beta": {"cp": -16}, "score": {"cp": -27}, "childCount": 30, "subtree": 91, "decisions": [{"kind": "research", "reason": "window", "technique": "pvs"}]}, "children": [{"move": "f8e7", "depth": 14, "alpha": {"cp": 26}, "beta": {"cp": 27}, "score": {"cp": 27, "bound": "lower"}, "childCount": 1, "subtree": 1, "decisions": [{"kind": "cutoff", "move": "b1c3", "order": 1, "technique": "alphabeta"}]}, {"move": "g8f6", "depth": 14, "alpha": {"cp": 26}, "beta": {"cp": 27}, "score": {"cp": 28, "bound": "lower"}, "childCount": 4, "subtree": 4, "decisions": [{"kind": "cutoff", "move": "e1g1", "order": 4, "technique": "alphabeta"}]}]}}
+```
+
+Five minutes later, with no request for the tree in between:
+
+```cnp
+→ {"jsonrpc": "2.0", "id": 19, "method": "engine/treeNode", "params": {"tree": "t1", "path": ["f1b5"]}}
+← {"jsonrpc": "2.0", "id": 19, "error": {"code": -32018, "message": "no tree t1: it has expired; ask for it again"}}
+```
+
 ## 8. The voice domain
 
 A voice node turns text into speech and speech into text. It never touches a microphone or a
@@ -713,11 +863,12 @@ its own outside the ranges below.
 | -32010 | `IncompatibleVersion` | The client's major version isn't spoken. `data`: `{"supported": [...]}` |
 | -32011 | `InvalidPosition` | The FEN, a move, or a root move isn't legal |
 | -32012 | `LimitExceeded` | A request beyond the node's limits ([6.3](#63-limits)) |
-| -32013 | `Busy` | Already running `maxConcurrentSearches` searches |
+| -32013 | `Busy` | Already running `maxConcurrentSearches` searches, or `maxConcurrentTrees` trees' searches |
 | -32014 | `Unsupported` | A capability the node didn't offer, or an unknown technique |
 | -32015 | `Unauthorized` | On the network, without valid credentials |
 | -32016 | `ShuttingDown` | A request after `shutdown` |
 | -32017 | `NotReady` | What the request needs isn't ready yet, like a model still downloading |
+| -32018 | `Expired` | A handle the node no longer keeps, or never gave, such as an expired tree's ([7.8](#78-the-search-tree)): ask again |
 
 ## 10. Security
 
@@ -726,8 +877,9 @@ already holds both to these rules, so that the network can be added without chan
 
 - **No file paths in any request.** Opening books, tablebases and models are the node's own
   configuration. A request that can name a file is how a server is turned against itself.
-- **Advertised limits** for depth, nodes, time, lines, concurrent searches and message size.
-  Requests beyond them are refused, not trimmed.
+- **Advertised limits** for depth, nodes, time, lines, concurrent searches, trees and message
+  size. Requests beyond them are refused, not trimmed. A node bounds what it keeps for a client,
+  the trees of [7.8](#78-the-search-tree), and drops the oldest rather than run out of memory.
 - **Credentials never travel in messages,** and are never logged.
 
 ## 11. Versions
@@ -753,9 +905,6 @@ These names are reserved, so that nothing else uses them:
 
 - **WebSocket over TLS** ([3.2](#32-the-network)), with credentials given when the connection
   opens, never in messages.
-- **The search tree:** `engine/tree` searches a position and keeps its tree for a while,
-  answering with a handle and the root's children. `engine/treeNode` returns one node's
-  children, a page at a time. A handle expires after a stated time.
 - **Distributed search:** `worker/register`, which a worker sends after connecting out to a
   coordinator, with its capabilities and hardware. Either side may then send requests.
 - **Streamed speech:** `voice/speak` sending its audio piece by piece.
@@ -777,5 +926,8 @@ These names are reserved, so that nothing else uses them:
   game clock (#18, cjus/chessgui#319); and an evaluation's `quiet` and `pieces`, with
   `searchScore` (capabilities `quiet` and `pieces`), so a client can explain the score of a
   search that evaluates with a neural network, from the quiet position it came from
-  (cjus/chessgui#340). Its design came from
+  (cjus/chessgui#340); and the search tree (capability `tree`, `engine/tree` and
+  `engine/treeNode`, the limits `maxTreeDepth`, `maxTreePlies` and `maxConcurrentTrees`, and
+  the error `Expired`), reserved until then, so a client can show which moves a search looked
+  at and why it set each aside (cjus/chessgui#350). Its design came from
   Solrac, a chess board that teaches, and cb2026, its engine.
