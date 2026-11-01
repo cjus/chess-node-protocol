@@ -246,6 +246,8 @@ Every engine node answers `engine/search` with the limits `depth`, `nodes`, `tim
 | `chess960` | Positions with `"chess960": true`: Chess960 starting positions and castling |
 | `progress` | `progressMs`, and `engine/progress` |
 | `evaluate` | `engine/evaluate` |
+| `quiet` | `quiet` on `engine/evaluate`: settling captures before evaluating ([7.6](#76-engineevaluate)) |
+| `pieces` | `pieces` on `engine/evaluate`, and `searchScore` in its result: what each piece is worth to the search's evaluation ([7.6](#76-engineevaluate)) |
 | `ponder` | `ponder`, and `engine/ponderHit`: searching on the opponent's time ([7.7](#77-pondering)) |
 
 ### 6.3 Limits
@@ -406,9 +408,11 @@ With cb2026's measured levels (three of its twenty-one shown):
 Needs `evaluate`. The engine's evaluation of a position as it stands, without a search, and
 what it is made of, so that a client can say why the engine likes a position. Params:
 
-| Field | Type | |
-| --- | --- | --- |
-| `position` | object | The position ([2](#2-conventions)) |
+| Field | Type | Needs | |
+| --- | --- | --- | --- |
+| `position` | object | | The position ([2](#2-conventions)) |
+| `quiet` | boolean | `quiet` | Settle captures first, as the engine's search does at its leaves, and evaluate the position where they stop (below). Missing: `false` |
+| `pieces` | boolean | `pieces` | Also say what each piece is worth to the search's evaluation (`pieces` in the result, below). Missing: `false` |
 
 A position whose FEN isn't valid, or with a move that isn't legal, is answered with
 `InvalidPosition`.
@@ -417,8 +421,11 @@ Result:
 
 | Field | Type | |
 | --- | --- | --- |
-| `score` | score | The evaluation, in centipawns from the side to move's point of view, always exact |
+| `score` | score | The evaluation, in centipawns from the side to move's point of view, always exact. With `quiet`, `{"mate": 0}` when the side to move is checkmated where the captures stop |
 | `terms` | array | What the score is made of, each with `id` (the engine's own, like `mobility`), `name` (for people), optionally `description` (a sentence), and `white` and `black`: what the term is worth to each side in this position, in centipawns, each from its own side's point of view. The side to move's terms less the other side's are the score, give or take rounding |
+| `quiet` | array of moves | When `quiet` was asked: the moves that settled the position, in order, which may be none. The rest of the result is about the position they reach |
+| `searchScore` | score | From a node with `pieces`, when its search evaluates this position with something other than the evaluation `terms` break down, such as a neural network: the search's evaluation, from the side to move's point of view, always exact. Missing: the search's evaluation is `score` |
+| `pieces` | array | When `pieces` was asked: each piece but the kings, in no set order, with `square` and `value`: what the piece is worth to its own side in this position, by the search's evaluation, in centipawns from its side's point of view. That is the evaluation less the evaluation of the position with the piece taken off the board. Left out, with `searchScore`, when the side to move is checkmated |
 
 With cb2026's evaluation (three of its eight terms shown):
 
@@ -431,8 +438,38 @@ Term ids are the engine's own, as technique ids are: two engines may split their
 differently.
 
 An evaluation doesn't search, so it misses a piece about to be captured and doesn't know that a
-side is mated. To explain a search's score, evaluate the position at the end of its `pv`, which
-is where the score came from.
+side is mated. A search's score comes from the end of its `pv`, but not always from the
+position the `pv` reaches: a search goes on past its line's last move, trying captures until
+the position is quiet (a quiescence search), so a `pv` can end in the middle of an exchange,
+with a piece about to be taken back. To explain a search's score, evaluate the position at the
+end of its `pv` with `quiet`.
+
+**`quiet`.** The node plays out captures (and queen promotions, and evasions when in check) as
+its search does at its leaves, until the side to move does better to stop, and evaluates the
+position there. `quiet` in the result lists the moves it played. They are the node's best
+guess at a quiet position, not a search of the position: they settle what is hanging, not who
+is winning.
+
+**`pieces`.** Some engines evaluate with a neural network, which judges a position as a whole
+and has no terms to break it into; `terms` then come from another evaluation, which the search
+doesn't use (`searchScore` says what the search's evaluation is). What each piece is worth to
+the search's evaluation can still be measured: evaluate the position again without the piece.
+The values don't add up to the score, since pieces work together: a piece that defends another
+is worth what its loss would cost. A position without one of its pieces may be one that can't
+arise in a game, such as a side left in check: the value is still what the evaluation thinks
+of that piece there, and it is no more than that. Stockfish's `eval` shows the same measure.
+
+With cb2026's network after 1.e4 d5, where White's pawn and then Black's queen take on d5
+(three of its eight terms and three of its 28 pieces shown):
+
+```cnp
+→ {"jsonrpc": "2.0", "id": 14, "method": "engine/evaluate", "params": {"position": {"fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", "moves": ["e2e4", "d7d5"]}, "quiet": true, "pieces": true}}
+← {"jsonrpc": "2.0", "id": 14, "result": {"score": {"cp": -17}, "terms": [{"id": "material", "name": "Material", "white": 3850, "black": 3850}, {"id": "mobility", "name": "Mobility", "description": "Safe squares each piece can reach.", "white": -89, "black": -75}, {"id": "tempo", "name": "Tempo", "white": 10, "black": 0}], "quiet": ["e4d5", "d8d5"], "searchScore": {"cp": 34}, "pieces": [{"square": "d1", "value": 918}, {"square": "d5", "value": 912}, {"square": "f1", "value": 338}]}}
+```
+
+The hand-crafted evaluation that `terms` break down thinks White is slightly worse (−17), and
+the network the search uses that White is better (+34): a client explaining the search's
+choices uses `searchScore` and `pieces`.
 
 ### 7.7 Pondering
 
@@ -736,5 +773,8 @@ These names are reserved, so that nothing else uses them:
   and how a short first word is kept, rather than the voice node knowing chess
   (cjus/chessgui#226); and pondering (capability `ponder`, a search's `ponder` and its result's
   `ponderMs`, and `engine/ponderHit`), so an engine can search on the opponent's time under a
-  game clock (#18, cjus/chessgui#319). Its design came from
+  game clock (#18, cjus/chessgui#319); and an evaluation's `quiet` and `pieces`, with
+  `searchScore` (capabilities `quiet` and `pieces`), so a client can explain the score of a
+  search that evaluates with a neural network, from the quiet position it came from
+  (cjus/chessgui#340). Its design came from
   Solrac, a chess board that teaches, and cb2026, its engine.
