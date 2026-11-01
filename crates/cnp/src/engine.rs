@@ -74,6 +74,13 @@ pub struct EngineCapabilities {
     /// A position's evaluation, term by term (`engine/evaluate`).
     #[serde(default)]
     pub evaluate: bool,
+    /// Settling captures before an evaluation (`quiet` on `engine/evaluate`).
+    #[serde(default)]
+    pub quiet: bool,
+    /// What each piece is worth to the search's evaluation (`pieces` on `engine/evaluate`),
+    /// and the search's own score (`searchScore`) when `terms` break down another evaluation.
+    #[serde(default)]
+    pub pieces: bool,
     /// Searching on the opponent's time (`ponder`, `engine/ponderHit`).
     #[serde(default)]
     pub ponder: bool,
@@ -629,8 +636,14 @@ pub struct EloRange {
 /// position as it stands, without a search, and what it is made of.
 ///
 /// **Pitfall:** an evaluation doesn't search, so it misses a piece about to be captured and
-/// doesn't know that a side is mated. To explain a search's score, evaluate the position at
-/// the end of its `pv`, which is where the score came from.
+/// doesn't know that a side is mated. A search's `pv` can end in the middle of an exchange,
+/// since the search tries captures past its last move until the position is quiet. To explain
+/// a search's score, evaluate the position at the end of its `pv` with
+/// [`EvaluateParams::quiet`].
+///
+/// **Pitfall:** an engine may search with a neural network and break down another evaluation
+/// in [`EvaluateResult::terms`]. Then [`EvaluateResult::search_score`] is the search's score,
+/// and [`EvaluateResult::pieces`] the search's evaluation's view, piece by piece.
 pub enum Evaluate {}
 
 impl RequestMethod for Evaluate {
@@ -645,6 +658,26 @@ impl RequestMethod for Evaluate {
 pub struct EvaluateParams {
     /// The position.
     pub position: Position,
+    /// Settle captures first, as the engine's search does at its leaves, and evaluate the
+    /// position where they stop (capability `quiet`). The moves come back in
+    /// [`EvaluateResult::quiet`].
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub quiet: bool,
+    /// Also say what each piece is worth to the search's evaluation (capability `pieces`), in
+    /// [`EvaluateResult::pieces`].
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub pieces: bool,
+}
+
+impl EvaluateParams {
+    /// An evaluation of `position` as it stands, with nothing more asked.
+    pub fn new(position: Position) -> EvaluateParams {
+        EvaluateParams {
+            position,
+            quiet: false,
+            pieces: false,
+        }
+    }
 }
 
 /// A position's evaluation.
@@ -652,10 +685,47 @@ pub struct EvaluateParams {
 #[serde(rename_all = "camelCase")]
 pub struct EvaluateResult {
     /// The evaluation, in centipawns from the side to move's point of view, always exact.
+    /// With [`EvaluateParams::quiet`], mate in 0 when the side to move is checkmated where the
+    /// captures stop.
     pub score: Score,
     /// What the score is made of. The side to move's terms less the other side's are the
     /// score, give or take rounding.
     pub terms: Vec<Term>,
+    /// When [`EvaluateParams::quiet`] was asked: the moves that settled the position, in
+    /// order, in coordinate notation, which may be none. The rest of the result is about the
+    /// position they reach. `None` when it wasn't asked.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub quiet: Option<Vec<String>>,
+    /// From a node with capability `pieces`, when its search evaluates the position with
+    /// something other than the evaluation [`EvaluateResult::terms`] break down, such as a
+    /// neural network: the search's evaluation, from the side to move's point of view.
+    /// `None`: the search's evaluation is [`EvaluateResult::score`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub search_score: Option<Score>,
+    /// When [`EvaluateParams::pieces`] was asked: what each piece but the kings is worth to
+    /// the search's evaluation, in no set order. Left out when the side to move is
+    /// checkmated. `None` when it wasn't asked.
+    ///
+    /// **Pitfall:** the values don't add up to the score, since pieces work together.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pieces: Option<Vec<PieceValue>>,
+}
+
+/// What one piece is worth to the search's evaluation of a position: the evaluation from its
+/// own side's point of view, less the evaluation of the position with the piece taken off the
+/// board.
+///
+/// It measures a neural network the way a person would test a position's piece: imagine it
+/// gone and see how much worse things are. A position without the piece may be one that can't
+/// arise in a game (a side left in check); the value is still the evaluation's view of that
+/// piece there, and no more than that. The idea is the one Stockfish's `eval` shows.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PieceValue {
+    /// The piece's square, like `e4`.
+    pub square: String,
+    /// What it is worth to its own side here, in centipawns from its side's point of view.
+    pub value: i32,
 }
 
 /// One term of an evaluation, like material or mobility.

@@ -288,6 +288,9 @@ fn an_evaluation_is_a_score_and_its_terms_for_each_side() {
                 black: 0,
             },
         ],
+        quiet: None,
+        search_score: None,
+        pieces: None,
     };
     let value = serde_json::to_value(&result).unwrap();
     // A term without a description leaves it out.
@@ -306,6 +309,69 @@ fn an_evaluation_is_a_score_and_its_terms_for_each_side() {
     // The capability is off unless offered.
     let offered: engine::EngineCapabilities = serde_json::from_value(json!({})).unwrap();
     assert!(!offered.evaluate);
+}
+
+#[test]
+fn an_evaluation_can_settle_captures_and_value_each_piece() {
+    let position = engine::Position::start().with_moves(["e2e4", "d7d5", "e4d5"]);
+    // Nothing more asked: the flags stay out, as for a node that doesn't know them.
+    let plain = engine::EvaluateParams::new(position.clone());
+    let value = serde_json::to_value(&plain).unwrap();
+    assert_eq!(value.get("quiet"), None);
+    assert_eq!(value.get("pieces"), None);
+    let asked = engine::EvaluateParams {
+        quiet: true,
+        pieces: true,
+        ..plain
+    };
+    let value = serde_json::to_value(&asked).unwrap();
+    assert_eq!(value["quiet"], json!(true));
+    assert_eq!(value["pieces"], json!(true));
+    assert_eq!(
+        serde_json::from_value::<engine::EvaluateParams>(value).unwrap(),
+        asked
+    );
+
+    let result = engine::EvaluateResult {
+        score: Score::cp(-17),
+        terms: vec![],
+        quiet: Some(vec!["d8d5".to_string()]),
+        search_score: Some(Score::cp(34)),
+        pieces: Some(vec![engine::PieceValue {
+            square: "d5".to_string(),
+            value: 912,
+        }]),
+    };
+    let value = serde_json::to_value(&result).unwrap();
+    assert_eq!(
+        value,
+        json!({"score": {"cp": -17}, "terms": [], "quiet": ["d8d5"],
+               "searchScore": {"cp": 34}, "pieces": [{"square": "d5", "value": 912}]})
+    );
+    assert_eq!(
+        serde_json::from_value::<engine::EvaluateResult>(value).unwrap(),
+        result
+    );
+    // Asked to settle an already quiet position: no moves, which isn't the same as not asked.
+    let settled: engine::EvaluateResult =
+        serde_json::from_value(json!({"score": {"cp": 5}, "terms": [], "quiet": []})).unwrap();
+    assert_eq!(settled.quiet, Some(vec![]));
+    let unasked: engine::EvaluateResult =
+        serde_json::from_value(json!({"score": {"cp": 5}, "terms": []})).unwrap();
+    assert_eq!(
+        (unasked.quiet, unasked.search_score, unasked.pieces),
+        (None, None, None)
+    );
+    // Checkmated where the captures stop: mate in 0, and no piece values.
+    let mated: engine::EvaluateResult =
+        serde_json::from_value(json!({"score": {"mate": 0}, "terms": [], "quiet": []})).unwrap();
+    assert_eq!(mated.score, Score::mate(0));
+    // The capabilities are off unless offered.
+    let offered: engine::EngineCapabilities = serde_json::from_value(json!({})).unwrap();
+    assert!(!offered.quiet && !offered.pieces);
+    let offered: engine::EngineCapabilities =
+        serde_json::from_value(json!({"quiet": true, "pieces": true})).unwrap();
+    assert!(offered.quiet && offered.pieces);
 }
 
 #[test]

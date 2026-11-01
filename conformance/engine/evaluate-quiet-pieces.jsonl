@@ -1,0 +1,15 @@
+{"session": "evaluate-quiet-pieces", "description": "engine/evaluate settles captures with quiet and values each piece with pieces: none to settle at the start, mate in 0 when checkmated, and each asked for alone (spec 7.6)", "requires": ["engine", "engine.evaluate", "engine.quiet", "engine.pieces"]}
+{"send": {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocol": "1.0", "client": {"name": "cnp-conformance", "version": "1.0"}}}}
+{"expect": {"id": 1, "result": {"protocol": "1.0", "node": {"name": "$string", "version": "$string", "license": "$string"}, "capabilities": "$object"}}}
+{"send": {"jsonrpc": "2.0", "id": 2, "method": "engine/evaluate", "params": {"position": {"fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"}, "quiet": true, "pieces": true}}}
+{"expect": {"id": 2, "result": {"score": {"cp": "$integer"}, "terms": "$array", "quiet": [], "pieces": "$array"}}}
+{"send": {"jsonrpc": "2.0", "id": 3, "method": "engine/evaluate", "params": {"position": {"fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", "moves": ["e2e4", "d7d5", "e4d5"]}, "quiet": true}}}
+{"expect": {"id": 3, "result": {"score": {"cp": "$integer"}, "terms": "$array", "quiet": "$array", "pieces": "$absent"}}}
+{"send": {"jsonrpc": "2.0", "id": 4, "method": "engine/evaluate", "params": {"position": {"fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", "moves": ["e2e4"]}, "pieces": true}}}
+{"expect": {"id": 4, "result": {"score": {"cp": "$integer"}, "terms": "$array", "quiet": "$absent", "pieces": "$array"}}}
+{"send": {"jsonrpc": "2.0", "id": 5, "method": "engine/evaluate", "params": {"position": {"fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", "moves": ["f2f3", "e7e5", "g2g4", "d8h4"]}, "quiet": true, "pieces": true}}}
+{"expect": {"id": 5, "result": {"score": {"mate": 0}, "terms": "$array", "quiet": [], "searchScore": "$absent", "pieces": "$absent"}}}
+{"send": {"jsonrpc": "2.0", "id": 99, "method": "shutdown"}}
+{"expect": {"id": 99, "result": null}}
+{"send": {"jsonrpc": "2.0", "method": "exit"}}
+{"expectExit": 0}
