@@ -982,14 +982,14 @@ pub enum DecisionKind {
         #[serde(rename = "move")]
         mv: String,
     },
-    /// The node was searched this many plies shallower than its place called for, as a move
-    /// unlikely to matter.
+    /// The node was searched this many plies shallower than its place called for, its move
+    /// judged unlikely to change the outcome.
     Reduced {
         /// How many plies shallower.
         plies: u32,
     },
-    /// The node was searched this many plies deeper than its place called for, as a move that
-    /// matters more than most.
+    /// The node was searched this many plies deeper than its place called for, its move judged
+    /// to matter more than most, such as a forced one.
     Extended {
         /// How many plies deeper.
         plies: u32,

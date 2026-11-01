@@ -1,0 +1,11 @@
+{"session": "tree-unsupported", "description": "a node without tree refuses engine/tree and engine/treeNode with Unsupported (spec 6.1, 7.8)", "requires": ["engine", "!engine.tree"]}
+{"send": {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocol": "1.0", "client": {"name": "cnp-conformance", "version": "1.0"}}}}
+{"expect": {"id": 1, "result": {"protocol": "1.0", "node": {"name": "$string", "version": "$string", "license": "$string"}, "capabilities": "$object"}}}
+{"send": {"jsonrpc": "2.0", "id": 2, "method": "engine/tree", "params": {"position": {"fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"}, "depth": 2}}}
+{"expect": {"id": 2, "error": {"code": -32014, "message": "$string"}}}
+{"send": {"jsonrpc": "2.0", "id": 3, "method": "engine/treeNode", "params": {"tree": "t1", "path": []}}}
+{"expect": {"id": 3, "error": {"code": -32014, "message": "$string"}}}
+{"send": {"jsonrpc": "2.0", "id": 99, "method": "shutdown"}}
+{"expect": {"id": 99, "result": null}}
+{"send": {"jsonrpc": "2.0", "method": "exit"}}
+{"expectExit": 0}
