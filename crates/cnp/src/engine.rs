@@ -877,8 +877,9 @@ pub struct Recorded {
 /// window is its parent's turned round: `[-beta, -alpha]`.
 ///
 /// **Pitfall:** a node may be searched more than once (shallower first, then again; or with
-/// a narrow window, then a wider one). Its `depth`, `alpha`, `beta` and `score` are those of
-/// the search that gave its score, the last; its [`Decision`]s say what came before.
+/// a narrow window, then a wider one). It is shown as its last search, the one whose score
+/// counted: its `depth`, `alpha`, `beta`, `score`, children and [`Decision`]s are that
+/// search's, after the decisions that say how it came to be searched that way.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TreeNode {

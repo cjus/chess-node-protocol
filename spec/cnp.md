@@ -623,8 +623,8 @@ for, and its line shortened:
 ```
 
 The search tried d4 first, which scored 16 for White (−16 for Black, who is to move after it).
-Bb5, searched with a narrow window first, scored inside the full one, so it was searched again
-with it: 27, exact, the best. Bc4 was refuted by the first reply tried, Nf6: at least −27 for
+Bb5, searched first with a null window just above d4's score, beat it, so it was searched again
+with the root's whole window: 27, exact, the best. Bc4 was refuted by the first reply tried, Nf6: at least −27 for
 Black, so no better for White than Bb5.
 
 **`engine/treeNode`.** Params:
