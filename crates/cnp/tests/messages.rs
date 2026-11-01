@@ -375,6 +375,199 @@ fn an_evaluation_can_settle_captures_and_value_each_piece() {
 }
 
 #[test]
+fn a_tree_request_leaves_out_what_it_doesn_t_ask_and_defaults_its_plies() {
+    let plain = engine::TreeParams::new(Position::start(), 12);
+    let value = serde_json::to_value(&plain).unwrap();
+    assert_eq!(
+        value,
+        json!({"position": {"fen": engine::START_FEN}, "depth": 12})
+    );
+    assert_eq!(plain.recorded_plies(), engine::DEFAULT_TREE_PLIES);
+    let asked = engine::TreeParams {
+        plies: Some(3),
+        limit: Some(5),
+        ..plain
+    };
+    assert_eq!(asked.recorded_plies(), 3);
+    let value = serde_json::to_value(&asked).unwrap();
+    assert_eq!(
+        (value["plies"].clone(), value["limit"].clone()),
+        (json!(3), json!(5))
+    );
+    assert_eq!(
+        serde_json::from_value::<engine::TreeParams>(value).unwrap(),
+        asked
+    );
+    // A page: the path from the root, and an offset and limit only when asked.
+    let page = engine::TreeNodeParams::new("t1", ["e2e4", "c7c5"]);
+    assert_eq!(
+        serde_json::to_value(&page).unwrap(),
+        json!({"tree": "t1", "path": ["e2e4", "c7c5"]})
+    );
+    let root: engine::TreeNodeParams = serde_json::from_value(json!({"tree": "t1"})).unwrap();
+    assert_eq!((root.path, root.offset, root.limit), (vec![], None, None));
+}
+
+#[test]
+fn a_tree_node_has_its_window_its_bounded_score_and_its_decisions() {
+    use engine::{Decision, DecisionKind, ResearchReason};
+
+    let node = engine::TreeNode {
+        mv: Some("f1c4".to_string()),
+        depth: 15,
+        alpha: Some(Score::cp(-31)),
+        beta: Some(Score::cp(-30)),
+        score: Some(Score {
+            value: ScoreValue::Centipawns(-12),
+            bound: Bound::Lower,
+        }),
+        child_count: 1,
+        subtree: 14,
+        decisions: vec![
+            Decision::new(DecisionKind::Reduced { plies: 1 }).by("lmr"),
+            Decision::new(DecisionKind::Research {
+                reason: ResearchReason::Depth,
+            })
+            .by("lmr"),
+            Decision::new(DecisionKind::Cutoff {
+                mv: "g8f6".to_string(),
+                order: 1,
+            })
+            .by("alphabeta"),
+        ],
+    };
+    let value = serde_json::to_value(&node).unwrap();
+    assert_eq!(
+        value,
+        json!({"move": "f1c4", "depth": 15, "alpha": {"cp": -31}, "beta": {"cp": -30},
+               "score": {"cp": -12, "bound": "lower"}, "childCount": 1, "subtree": 14,
+               "decisions": [
+                   {"kind": "reduced", "plies": 1, "technique": "lmr"},
+                   {"kind": "research", "reason": "depth", "technique": "lmr"},
+                   {"kind": "cutoff", "move": "g8f6", "order": 1, "technique": "alphabeta"}]})
+    );
+    assert_eq!(
+        serde_json::from_value::<engine::TreeNode>(value).unwrap(),
+        node
+    );
+
+    // The root: no move and no window. A window's missing edge means it had none.
+    let root: engine::TreeNode = serde_json::from_value(
+        json!({"depth": 16, "score": {"cp": 31}, "childCount": 27, "subtree": 802}),
+    )
+    .unwrap();
+    assert_eq!((root.mv, root.alpha, root.beta), (None, None, None));
+    assert!(root.decisions.is_empty());
+
+    // Each kind, as JSON has it; a node-level one with and without a move.
+    let kinds = [
+        (
+            json!({"kind": "table", "technique": "tt"}),
+            DecisionKind::Table,
+        ),
+        (json!({"kind": "tablebase"}), DecisionKind::Tablebase),
+        (
+            json!({"kind": "nullMove", "technique": "nullmove"}),
+            DecisionKind::NullMove,
+        ),
+        (
+            json!({"kind": "nodePruned", "technique": "rfp"}),
+            DecisionKind::NodePruned { mv: None },
+        ),
+        (
+            json!({"kind": "nodePruned", "move": "c3d5", "technique": "probcut"}),
+            DecisionKind::NodePruned {
+                mv: Some("c3d5".to_string()),
+            },
+        ),
+        (
+            json!({"kind": "movePruned", "move": "a2a3", "technique": "lmp"}),
+            DecisionKind::MovePruned {
+                mv: "a2a3".to_string(),
+            },
+        ),
+        (
+            json!({"kind": "extended", "plies": 1, "technique": "singular"}),
+            DecisionKind::Extended { plies: 1 },
+        ),
+        (
+            json!({"kind": "research", "reason": "window", "technique": "pvs"}),
+            DecisionKind::Research {
+                reason: ResearchReason::Window,
+            },
+        ),
+    ];
+    for (value, kind) in kinds {
+        let decision: Decision = serde_json::from_value(value.clone()).unwrap();
+        assert_eq!(decision.kind, kind);
+        assert_eq!(serde_json::to_value(&decision).unwrap(), value);
+    }
+    // A later version's kind, or reason, is read rather than refused, so a client can skip it.
+    let later: Decision =
+        serde_json::from_value(json!({"kind": "aspiration", "technique": "x", "by": 3})).unwrap();
+    assert_eq!(later.kind, DecisionKind::Unknown);
+    let later: Decision =
+        serde_json::from_value(json!({"kind": "research", "reason": "aspiration"})).unwrap();
+    assert_eq!(
+        later.kind,
+        DecisionKind::Research {
+            reason: ResearchReason::Unknown
+        }
+    );
+    // A cutoff names its move.
+    assert!(serde_json::from_value::<Decision>(json!({"kind": "cutoff", "order": 1})).is_err());
+}
+
+#[test]
+fn a_tree_says_what_it_holds_and_the_tree_capability_and_limits_are_offered() {
+    let result: engine::TreeResult = serde_json::from_value(json!({
+        "tree": "t1", "expiresMs": 300000, "depth": 4, "nodes": 900, "timeMs": 3,
+        "bestMove": "e2e4", "score": {"cp": 30}, "pv": ["e2e4", "e7e5"],
+        "recorded": {"plies": 2, "nodes": 61, "decisions": 75},
+        "root": {"depth": 4, "score": {"cp": 30}, "childCount": 20, "subtree": 60},
+        "children": []
+    }))
+    .unwrap();
+    assert!(!result.recorded.truncated);
+    assert_eq!(result.sel_depth, 0);
+    // No legal move: no best move and no score, as for a search.
+    let mated: engine::TreeResult = serde_json::from_value(json!({
+        "tree": "t2", "expiresMs": 300000, "depth": 0, "nodes": 0, "timeMs": 0,
+        "bestMove": null, "pv": [],
+        "recorded": {"plies": 2, "nodes": 1, "decisions": 0},
+        "root": {"depth": 0, "childCount": 0, "subtree": 0}
+    }))
+    .unwrap();
+    assert_eq!((mated.best_move, mated.score), (None, None));
+    assert!(mated.children.is_empty());
+
+    let offered: engine::EngineCapabilities = serde_json::from_value(json!({})).unwrap();
+    assert!(!offered.tree);
+    let offered: engine::EngineCapabilities =
+        serde_json::from_value(json!({"tree": true})).unwrap();
+    assert!(offered.tree);
+    // A tree's depth falls back on maxDepth, and one tree at a time is the default.
+    let limits: lifecycle::Limits = serde_json::from_value(json!({"maxDepth": 64})).unwrap();
+    assert_eq!(
+        (limits.tree_depth(), limits.concurrent_trees()),
+        (Some(64), 1)
+    );
+    let limits: lifecycle::Limits = serde_json::from_value(
+        json!({"maxDepth": 64, "maxTreeDepth": 24, "maxTreePlies": 6, "maxConcurrentTrees": 2}),
+    )
+    .unwrap();
+    assert_eq!(
+        (
+            limits.tree_depth(),
+            limits.max_tree_plies,
+            limits.concurrent_trees()
+        ),
+        (Some(24), Some(6), 2)
+    );
+    assert_eq!(code::EXPIRED, -32018);
+}
+
+#[test]
 fn versions_are_text_and_agree_on_the_major_version() {
     let v: Version = serde_json::from_value(json!("1.3")).unwrap();
     assert_eq!(v, Version { major: 1, minor: 3 });

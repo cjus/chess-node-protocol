@@ -58,7 +58,7 @@ pub mod code {
     pub const INVALID_POSITION: i64 = -32011;
     /// A request goes beyond the limits the node advertised.
     pub const LIMIT_EXCEEDED: i64 = -32012;
-    /// The node is already running as many searches as it can.
+    /// The node is already running as many searches, or `engine/tree` searches, as it can.
     pub const BUSY: i64 = -32013;
     /// The request needs a capability the node didn't offer.
     pub const UNSUPPORTED: i64 = -32014;
@@ -68,6 +68,9 @@ pub mod code {
     pub const SHUTTING_DOWN: i64 = -32016;
     /// What the request needs isn't ready yet (a voice model still downloading).
     pub const NOT_READY: i64 = -32017;
+    /// A handle the node no longer keeps, or never gave: an `engine/tree`'s tree that has
+    /// expired. Ask for it again.
+    pub const EXPIRED: i64 = -32018;
 }
 
 /// A request's id: a number or a string, chosen by whoever sends the request.
