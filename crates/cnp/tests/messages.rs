@@ -568,6 +568,123 @@ fn a_tree_says_what_it_holds_and_the_tree_capability_and_limits_are_offered() {
 }
 
 #[test]
+fn a_search_can_ask_to_follow_its_root_and_a_node_can_offer_it() {
+    let plain = SearchParams::new(Position::start());
+    assert_eq!(serde_json::to_value(&plain).unwrap().get("rootMs"), None);
+    let following = plain.root_ms(250);
+    assert_eq!(following.root_ms, Some(250));
+    let value = serde_json::to_value(&following).unwrap();
+    assert_eq!(value["rootMs"], json!(250));
+    assert_eq!(
+        serde_json::from_value::<SearchParams>(value).unwrap(),
+        following
+    );
+
+    let offered: engine::EngineCapabilities = serde_json::from_value(json!({})).unwrap();
+    assert!(!offered.root);
+    let offered: engine::EngineCapabilities =
+        serde_json::from_value(json!({"root": true})).unwrap();
+    assert!(offered.root);
+}
+
+#[test]
+fn following_the_root_says_the_move_its_place_the_best_and_the_effort() {
+    use engine::{RootMove, RootParams, RootResearch};
+
+    let params = RootParams {
+        id: Id::Number(20),
+        depth: 14,
+        multipv: Some(2),
+        mv: "d2d4".to_string(),
+        number: 3,
+        of: 26,
+        best: Some("f1c4".to_string()),
+        moves: vec![
+            RootMove {
+                mv: "f1c4".to_string(),
+                nodes: 81_234,
+            },
+            RootMove {
+                mv: "d2d4".to_string(),
+                nodes: 1_203,
+            },
+        ],
+        nodes: 190_011,
+        time_ms: 250,
+        research: Some(RootResearch::Better {
+            mv: "d2d4".to_string(),
+        }),
+    };
+    let notification = Notification::new::<engine::Root>(&params);
+    assert_eq!(notification.method, "engine/root");
+    let value = Message::from(notification).to_value();
+    assert_eq!(
+        value,
+        json!({"jsonrpc": "2.0", "method": "engine/root", "params": {
+            "id": 20, "depth": 14, "multipv": 2, "move": "d2d4", "number": 3, "of": 26,
+            "best": "f1c4",
+            "moves": [{"move": "f1c4", "nodes": 81234}, {"move": "d2d4", "nodes": 1203}],
+            "nodes": 190011, "timeMs": 250, "research": {"kind": "better", "move": "d2d4"}}})
+    );
+    let Message::Notification(read) = parse(value) else {
+        panic!("not a notification");
+    };
+    assert!(read.is::<engine::Root>());
+    assert_eq!(read.params::<engine::Root>().unwrap(), params);
+
+    // The first: one line, no best yet, nothing gone back over.
+    let first: RootParams = serde_json::from_value(json!({
+        "id": 3, "depth": 1, "move": "e2e4", "number": 1, "of": 20,
+        "moves": [{"move": "e2e4", "nodes": 0}], "nodes": 1, "timeMs": 0
+    }))
+    .unwrap();
+    let value = serde_json::to_value(&first).unwrap();
+    assert_eq!(
+        (first.multipv, first.best, first.research),
+        (None, None, None)
+    );
+    for left_out in ["multipv", "best", "research"] {
+        assert_eq!(value.get(left_out), None, "{left_out}");
+    }
+
+    // A depth's score outside its window comes with its bound.
+    let kinds = [
+        (
+            json!({"kind": "failHigh", "score": {"cp": 45, "bound": "lower"}}),
+            RootResearch::FailHigh {
+                score: Score {
+                    value: ScoreValue::Centipawns(45),
+                    bound: Bound::Lower,
+                },
+            },
+        ),
+        (
+            json!({"kind": "failLow", "score": {"cp": -8, "bound": "upper"}}),
+            RootResearch::FailLow {
+                score: Score {
+                    value: ScoreValue::Centipawns(-8),
+                    bound: Bound::Upper,
+                },
+            },
+        ),
+    ];
+    for (value, research) in kinds {
+        assert_eq!(
+            serde_json::from_value::<RootResearch>(value.clone()).unwrap(),
+            research
+        );
+        assert_eq!(serde_json::to_value(&research).unwrap(), value);
+    }
+    // A later version's kind is read rather than refused, so a client can skip it.
+    let later: RootResearch =
+        serde_json::from_value(json!({"kind": "singular", "move": "e2e4"})).unwrap();
+    assert_eq!(later, RootResearch::Unknown);
+    // A better move names itself, and a window's failure its score.
+    assert!(serde_json::from_value::<RootResearch>(json!({"kind": "better"})).is_err());
+    assert!(serde_json::from_value::<RootResearch>(json!({"kind": "failHigh"})).is_err());
+}
+
+#[test]
 fn versions_are_text_and_agree_on_the_major_version() {
     let v: Version = serde_json::from_value(json!("1.3")).unwrap();
     assert_eq!(v, Version { major: 1, minor: 3 });

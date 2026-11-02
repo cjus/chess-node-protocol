@@ -86,6 +86,7 @@ fn notification_params(notification: &Notification) -> Result<(), String> {
         "exit" => notification.params::<lifecycle::Exit>().map(drop),
         "$/cancelRequest" => notification.params::<lifecycle::CancelRequest>().map(drop),
         "engine/progress" => notification.params::<engine::EngineProgress>().map(drop),
+        "engine/root" => notification.params::<engine::Root>().map(drop),
         "voice/modelState" => notification.params::<voice::ModelStateChanged>().map(drop),
         "voice/audio" => notification.params::<voice::Audio>().map(drop),
         "voice/speechStarted" => notification.params::<voice::SpeechStarted>().map(drop),
