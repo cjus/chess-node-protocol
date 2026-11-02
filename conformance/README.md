@@ -15,7 +15,7 @@ conforms to CNP 1.0 if it passes every session that applies to it.
 | Directory | What it checks | Applies to |
 | --- | --- | --- |
 | `lifecycle/` | `initialize`, `ping`, `shutdown`, `exit`, cancelling, and the errors around them (spec 4, 5, 9) | Every node |
-| `engine/` | Searches, stop and cancel, each engine capability, pondering's hit and miss, and the search tree: reading it, its errors and limits, during a search and cancelled (spec 7) | Engine nodes |
+| `engine/` | Searches, stop and cancel, each engine capability, pondering's hit and miss, the search tree: reading it, its errors and limits, during a search and cancelled, and following a search's root (spec 7) | Engine nodes |
 | `voice/` | Voices, models, refusing bad requests, and audio for a listen that isn't there (spec 8) | Voice nodes |
 | `preferences/` | The draft preferences extension's read (`spec/preferences.md`) | Nodes that keep preferences |
 | `games/` | The draft games extension: a save, its retry, a reused version, get, list, searching, deleting, importing and a game's source (`spec/games.md`) | Nodes that keep games (searching, deleting, importing and sources: those that offer them) |
@@ -45,11 +45,16 @@ Each later line is one step, with optionally a `comment`:
 | `{"expect": pattern}` | Waits for a message matching the pattern |
 | `{"expectAll": [pattern, …]}` | Waits for messages matching all of them, in any order |
 | `{"expectExit": code}` | Waits for the node to end with this exit code (`null`: any) |
+| `{"forbid": pattern}` | From here on, a message matching the pattern fails the session |
 | `{"close": true}` | Closes the node's input |
 | `{"comment": "text"}` | Nothing: a note for people |
 
 While a step waits, notifications that match nothing are skipped (a search's progress, a
-model's state), but any other message that doesn't match fails the session.
+model's state), but any other message that doesn't match fails the session. `forbid` is how a
+session says a notification must not come, such as one about a search after its result: from
+that step on, a message matching the pattern fails the session, even one a step expects. The
+node's messages are read in the order it sent them, so a forbidden one sent before the answer
+the next step waits for is always caught.
 
 ## Patterns
 

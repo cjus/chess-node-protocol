@@ -58,6 +58,8 @@ pub struct Node {
     stderr: Arc<Mutex<Vec<u8>>>,
     /// Notifications skipped while waiting, for a failure's report.
     skipped: Vec<Value>,
+    /// Patterns no message may match from now on (`forbid`), each with its step's number.
+    forbidden: Vec<(usize, Value)>,
 }
 
 impl Node {
@@ -108,6 +110,7 @@ impl Node {
             received,
             stderr,
             skipped: Vec::new(),
+            forbidden: Vec::new(),
         })
     }
 
@@ -124,6 +127,12 @@ impl Node {
     /// Closes the node's input.
     pub fn close(&mut self) {
         self.stdin = None;
+    }
+
+    /// From now on, fails at any message matching `pattern`, a notification included, even
+    /// one a step expects. `step` is the number of the step that forbade it, for the report.
+    pub fn forbid(&mut self, step: usize, pattern: Value) {
+        self.forbidden.push((step, pattern));
     }
 
     /// Waits for a message matching `pattern`, skipping notifications that don't.
@@ -165,6 +174,13 @@ impl Node {
                     ));
                 }
             };
+            for (step, pattern) in &self.forbidden {
+                if matches(pattern, &message, bindings).is_ok() {
+                    return Err(format!(
+                        "got {message}, which step {step} forbids ({pattern})"
+                    ));
+                }
+            }
             let mut mismatches = Vec::new();
             let found =
                 waiting
@@ -254,6 +270,10 @@ pub fn run_session(session: &Session, command: &[String]) -> Outcome {
                 )),
                 Err(e) => Err(e),
             },
+            Step::Forbid(pattern) => {
+                node.forbid(n + 1, pattern.clone());
+                Ok(())
+            }
             Step::Close => {
                 node.close();
                 Ok(())

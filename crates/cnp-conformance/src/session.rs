@@ -22,11 +22,16 @@
 //! | `{"expect": pattern}` | Waits for a message matching the pattern ([`crate::pattern`]) |
 //! | `{"expectAll": [pattern, …]}` | Waits for messages matching all of them, in any order |
 //! | `{"expectExit": code}` | Waits for the node to end with this exit code (`null`: any) |
+//! | `{"forbid": pattern}` | From here on, a message matching the pattern fails the session |
 //! | `{"close": true}` | Closes the node's input |
 //! | `{"comment": "text"}` | Nothing: a note for people |
 //!
 //! While waiting, notifications that don't match are skipped (a search's progress, a model's
-//! state), but any other message that doesn't match fails the session.
+//! state), but any other message that doesn't match fails the session. `forbid` is how a
+//! session says a notification must not come, such as one about a search after its result: a
+//! message matching a forbidden pattern fails the session even when a step expects it.
+//! Messages are read in the order the node sent them, so a forbidden one sent before the
+//! answer the next step waits for is always caught.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -67,6 +72,8 @@ pub enum Step {
     ExpectAll(Vec<Value>),
     /// Wait for the node to end, with this exit code (`None`: any).
     ExpectExit(Option<i32>),
+    /// From here on, fail at any message matching this pattern.
+    Forbid(Value),
     /// Close the node's input.
     Close,
 }
@@ -127,6 +134,7 @@ pub fn parse(text: &str, path: &Path) -> Result<Session, String> {
                     .and_then(|c| i32::try_from(c).ok())
                     .ok_or(format!("line {number}: an exit code is a whole number"))?,
             )),
+            ("forbid", pattern) => Step::Forbid(pattern),
             ("close", Value::Bool(true)) => Step::Close,
             (key, _) => return Err(format!("line {number}: no step {key:?} of that form")),
         });
