@@ -149,3 +149,31 @@ fn a_session_can_need_a_capability_absent() {
     );
     assert_eq!(missing(&session, &offered(&[])), vec!["engine".to_string()]);
 }
+
+#[test]
+fn a_forbidden_message_fails_the_session_even_when_a_step_expects_it() {
+    let ping = |id: u32| {
+        format!("{{\"send\": {{\"jsonrpc\": \"2.0\", \"id\": {id}, \"method\": \"ping\"}}}}")
+    };
+    let outcome = run(&format!(
+        "{{\"session\": \"forbid\"}}\n{INIT}\n\
+         {{\"forbid\": {{\"id\": 3}}}}\n{}\n\
+         {{\"expect\": {{\"id\": 2, \"result\": null}}}}\n{}\n\
+         {{\"expect\": {{\"id\": 3, \"result\": null}}}}",
+        ping(2),
+        ping(3)
+    ));
+    let Outcome::Failed(why) = outcome else {
+        panic!("passed: {outcome:?}");
+    };
+    assert!(why.contains("step 7"), "{why}");
+    assert!(why.contains("step 3 forbids"), "{why}");
+    // A message it doesn't match passes.
+    let passes = run(&format!(
+        "{{\"session\": \"forbid\"}}\n{INIT}\n\
+         {{\"forbid\": {{\"id\": 3}}}}\n{}\n\
+         {{\"expect\": {{\"id\": 2, \"result\": null}}}}",
+        ping(2)
+    ));
+    assert_eq!(passes, Outcome::Passed);
+}

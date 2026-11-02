@@ -5,6 +5,7 @@
 //! | --- | --- | --- |
 //! | `engine/search` | request | [`Search`]: [`SearchParams`] → [`SearchResult`] |
 //! | `engine/progress` | notification, node to client | [`EngineProgress`]: [`Progress`] |
+//! | `engine/root` | notification, node to client | [`Root`]: [`RootParams`] |
 //! | `engine/stop` | request | [`Stop`]: [`StopParams`] → `null` |
 //! | `engine/techniques` | request | [`Techniques`]: no params → [`TechniquesResult`] |
 //! | `engine/levels` | request | [`Levels`]: no params → [`LevelsResult`] |
@@ -33,6 +34,13 @@
 //! its children by the moves that lead to it. A tree is too large for one message, so it is
 //! read a part at a time. The handle is a cache, not state a client can rely on: it expires,
 //! and then the client asks for the tree again.
+//!
+//! **Following the root** (spec, 7.9) is the search's other view while it runs: a search with
+//! [`SearchParams::root_ms`] gets [`Root`] notifications saying which root move it is on, where
+//! its effort has gone, and, at once, when it goes back over something ([`RootResearch`]): a
+//! later move that may be the new best, or a depth whose score fell outside its window. The
+//! pitfall is the node counts: a node may follow its root on one thread only, so a move's
+//! nodes are its share of that thread's effort, not of [`RootParams::nodes`].
 
 use std::collections::BTreeMap;
 
@@ -96,6 +104,10 @@ pub struct EngineCapabilities {
     /// A search's tree, kept for a while (`engine/tree`, `engine/treeNode`).
     #[serde(default)]
     pub tree: bool,
+    /// Following a search's root: which root move it is on, and where its effort goes
+    /// (`rootMs`, `engine/root`).
+    #[serde(default)]
+    pub root: bool,
 }
 
 /// The `engine/search` request: search a position and answer with the best move.
@@ -179,6 +191,9 @@ pub struct SearchParams {
     /// Send `engine/progress` at most this often, in milliseconds. Missing: no progress.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub progress_ms: Option<u64>,
+    /// Send `engine/root` at most this often, in milliseconds (capability `root`). Missing: none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub root_ms: Option<u64>,
     /// A hint that searches with the same value belong to one game, so the node may keep its
     /// hash table between them. A node may ignore it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -205,6 +220,7 @@ impl SearchParams {
             multipv: None,
             deterministic: false,
             progress_ms: None,
+            root_ms: None,
             game: None,
             ponder: false,
         }
@@ -213,6 +229,13 @@ impl SearchParams {
     /// The same search, with these limits.
     pub fn limits(mut self, limits: SearchLimits) -> SearchParams {
         self.limits = limits;
+        self
+    }
+
+    /// The same search, following its root: `engine/root` at most every `ms` milliseconds
+    /// ([`SearchParams::root_ms`]).
+    pub fn root_ms(mut self, ms: u64) -> SearchParams {
+        self.root_ms = Some(ms);
         self
     }
 }
@@ -517,6 +540,110 @@ pub struct Progress {
     /// Tablebase probes that gave a result.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tb_hits: Option<u64>,
+}
+
+/// The `engine/root` notification, from the node (capability `root`): which root move a search
+/// is on, and where its effort has gone. Sent only for a search that asked (`rootMs`), at most
+/// that often, and never after its result; a [`RootResearch`] is sent at once.
+///
+/// UCI's `currmove`, `currmovenumber`, `lowerbound` and `upperbound` say the same. It is
+/// separate from [`EngineProgress`], and throttled on its own, so following the root never
+/// holds the lines back.
+pub enum Root {}
+
+impl NotificationMethod for Root {
+    const NAME: &'static str = "engine/root";
+    type Params = RootParams;
+}
+
+/// Where a search is at its root: the move it is searching, the best so far, and the effort
+/// each root move has had.
+///
+/// **Pitfall:** a node may follow its root on one thread only, the one that reports its lines.
+/// The nodes in [`RootParams::moves`] are then that thread's, and what they show is each move's
+/// share; [`RootParams::nodes`] counts every thread, as [`Progress::nodes`] does.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RootParams {
+    /// The `engine/search` request it belongs to.
+    pub id: Id,
+    /// The depth being searched: one more than the last completed.
+    pub depth: u32,
+    /// Which line is being searched, from 1, when searching several. `None` otherwise.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub multipv: Option<u32>,
+    /// The root move being searched now, in coordinate notation.
+    #[serde(rename = "move")]
+    pub mv: String,
+    /// Its place in this depth's order of root moves for this line, from 1.
+    pub number: u32,
+    /// How many root moves this line searches.
+    pub of: u32,
+    /// The best root move so far for this line: this depth's, or the last completed depth's
+    /// until this depth has one. `None` before there is any.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub best: Option<String>,
+    /// Every root move searched so far in this search, with the nodes spent below it, at every
+    /// depth and for every line together, in no particular order.
+    #[serde(default)]
+    pub moves: Vec<RootMove>,
+    /// Nodes searched so far, every thread together.
+    pub nodes: u64,
+    /// Time so far, in milliseconds.
+    pub time_ms: u64,
+    /// What the search is going back over, when it is: sent when it happens, without waiting
+    /// for `rootMs`. `None` otherwise.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub research: Option<RootResearch>,
+}
+
+/// One root move, and the effort spent on it so far.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RootMove {
+    /// The move, in coordinate notation.
+    #[serde(rename = "move")]
+    pub mv: String,
+    /// The nodes searched below it.
+    pub nodes: u64,
+}
+
+/// What a search is going back over at its root (spec, 7.9). In JSON, `kind` and the kind's
+/// own fields.
+///
+/// Later minor versions may add kinds: a client ignores one it doesn't know, which this crate
+/// reads as [`RootResearch::Unknown`].
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(
+    tag = "kind",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
+pub enum RootResearch {
+    /// `mv`, a root move searched after the best, scored above it on its quick search (with a
+    /// null window), and is being searched again in full to see whether it is the new best.
+    /// The next notifications' [`RootParams::best`] say whether it was.
+    Better {
+        /// The move, in coordinate notation.
+        #[serde(rename = "move")]
+        mv: String,
+    },
+    /// The depth's score came out above its aspiration window, the window around the last
+    /// depth's score it was searched in: the best move looks better than the last depth said.
+    /// The depth is searched again with a wider window.
+    FailHigh {
+        /// The score it came out at, a lower bound.
+        score: Score,
+    },
+    /// The depth's score came out below its aspiration window: worse than the last depth said.
+    /// The depth is searched again with a wider window.
+    FailLow {
+        /// The score it came out at, an upper bound.
+        score: Score,
+    },
+    /// A kind this crate doesn't know, from a later version. Only read, never sent.
+    #[serde(other)]
+    Unknown,
 }
 
 /// The `engine/stop` request: end a search early. The search answers at once with the best it

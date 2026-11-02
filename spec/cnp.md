@@ -253,6 +253,7 @@ Every engine node answers `engine/search` with the limits `depth`, `nodes`, `tim
 | `pieces` | `pieces` on `engine/evaluate`, and `searchScore` in its result: what each piece is worth to the search's evaluation ([7.6](#76-engineevaluate)) |
 | `ponder` | `ponder`, and `engine/ponderHit`: searching on the opponent's time ([7.7](#77-pondering)) |
 | `tree` | `engine/tree` and `engine/treeNode`: a search's tree, kept for a while ([7.8](#78-the-search-tree)) |
+| `root` | `rootMs` on `engine/search`, and `engine/root`: which root move a search is on, and where its effort goes ([7.9](#79-engineroot)) |
 
 ### 6.3 Limits
 
@@ -284,6 +285,7 @@ Every engine node answers `engine/search` with the limits `depth`, `nodes`, `tim
 | `engine/ponderHit` | request | The move a ponder search expected was played: search on the clock now |
 | `engine/tree` | request | Search a position and keep its tree for a while |
 | `engine/treeNode` | request | One node of a kept tree, and a page of its children |
+| `engine/root` | notification, node to client | Which root move a search is on, and where its effort has gone |
 
 ### 7.1 `engine/search`
 
@@ -300,6 +302,7 @@ Params:
 | `multipv` | integer | `multipv` | How many lines to find, the best first. Missing: 1 |
 | `deterministic` | boolean | `deterministic` | One thread and a cleared hash table, so the same request gives the same result, node counts included |
 | `progressMs` | integer | `progress` | Send `engine/progress` at most this often. Missing: no progress |
+| `rootMs` | integer | `root` | Send `engine/root` at most this often ([7.9](#79-engineroot)). Missing: none |
 | `game` | string | | A hint that searches with the same `game` belong to one game, so the node may keep its hash table between them. A node MAY ignore it |
 | `ponder` | boolean | `ponder` | Search on the opponent's time, until `engine/ponderHit` ([7.7](#77-pondering)) |
 
@@ -662,6 +665,62 @@ Five minutes later, with no request for the tree in between:
 ← {"jsonrpc": "2.0", "id": 19, "error": {"code": -32018, "message": "no tree t1: it has expired; ask for it again"}}
 ```
 
+### 7.9 `engine/root`
+
+Needs `root`. A notification from the node saying which root move a search is on and where its
+effort has gone, sent only for a search that asked with `rootMs`, at most that often, and never
+after the search's result. A node MUST send at least one before the result of a search that
+searched a root move. UCI's `currmove`, `currmovenumber`, `lowerbound` and `upperbound` say the
+same. A client can show what the engine is looking at while it looks, and when it may be
+changing its mind. It is separate from `engine/progress` ([7.2](#72-engineprogress)) and
+throttled on its own, so following the root never holds the lines back.
+
+A node MAY follow its root on one thread only, the one that reports its lines. The nodes in
+`moves` are then that thread's, and what they show is each move's share of the effort, while
+`nodes` counts every thread, as in `engine/progress`. Its params:
+
+| Field | Type | |
+| --- | --- | --- |
+| `id` | id | The `engine/search` request it belongs to |
+| `depth` | integer | The depth being searched: one more than the last completed |
+| `multipv` | integer | Which line is being searched, from 1, when searching several. Missing otherwise |
+| `move` | move | The root move being searched now |
+| `number` | integer | Its place in this depth's order of root moves for this line, from 1 |
+| `of` | integer | How many root moves this line searches |
+| `best` | move | The best root move so far for this line: this depth's, or the last completed depth's until this depth has one. Missing before there is any |
+| `moves` | array | Every root move searched so far in this search, each `{"move": m, "nodes": n}`: the nodes spent below it, at every depth and for every line together, in no particular order |
+| `nodes`, `timeMs` | integers | So far, as in `engine/progress` |
+| `research` | object | What the search is going back over, when it is (below). Missing when not |
+
+A `research` is sent when it happens, without waiting for `rootMs`, and the interval then counts
+from it. Its `kind` says what the search is going back over, and the fields of its kind:
+
+| Kind | Fields | When |
+| --- | --- | --- |
+| `better` | `move` | A root move searched after the best scored above it on its quick search, with a null window, and is being searched again in full to see whether it is the new best. The next notifications' `best` say whether it was |
+| `failHigh` | `score`, with `bound` `lower` | The depth's score came out above its aspiration window, the window around the last depth's score that the depth was searched in: the best move looks better than the last depth said. The depth is searched again with a wider window |
+| `failLow` | `score`, with `bound` `upper` | The depth's score came out below its aspiration window: worse than the last depth said. The depth is searched again with a wider window |
+
+After a `failHigh` or a `failLow`, `move` and `number` are those the depth's next search starts
+with. A client MUST ignore a `research` of a kind it doesn't know: later minor versions may add
+them.
+
+With cb2026, following the root of a search of the position in [7.1](#71-enginesearch), with
+three of the 27 moves' counts shown in each notification and the line shortened:
+
+```cnp
+→ {"jsonrpc": "2.0", "id": 20, "method": "engine/search", "params": {"position": {"fen": "r1bqkbnr/pppp1ppp/2n5/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 2 3"}, "limits": {"depth": 18}, "rootMs": 250}}
+← {"jsonrpc": "2.0", "method": "engine/root", "params": {"id": 20, "depth": 15, "move": "d2d4", "number": 1, "of": 27, "best": "d2d4", "moves": [{"move": "f1b5", "nodes": 243851}, {"move": "d2d4", "nodes": 180650}, {"move": "f1c4", "nodes": 133439}], "nodes": 651264, "timeMs": 601}}
+← {"jsonrpc": "2.0", "method": "engine/root", "params": {"id": 20, "depth": 16, "move": "f1b5", "number": 2, "of": 27, "best": "d2d4", "moves": [{"move": "d2d4", "nodes": 304188}, {"move": "f1b5", "nodes": 263912}, {"move": "f1c4", "nodes": 133945}], "nodes": 816665, "timeMs": 809, "research": {"kind": "better", "move": "f1b5"}}}
+← {"jsonrpc": "2.0", "method": "engine/root", "params": {"id": 20, "depth": 16, "move": "h2h3", "number": 26, "of": 27, "best": "f1b5", "moves": [{"move": "f1b5", "nodes": 447814}, {"move": "d2d4", "nodes": 304188}, {"move": "f1c4", "nodes": 143193}], "nodes": 1060864, "timeMs": 1059}}
+← {"jsonrpc": "2.0", "id": 20, "result": {"bestMove": "f1b5", "ponder": "a7a6", "score": {"cp": 30}, "pv": ["f1b5", "a7a6", "b5c6", "d7c6"], "depth": 18, "selDepth": 32, "nodes": 2171171, "timeMs": 2292, "stopped": false}}
+```
+
+At depth 15 the search starts with d4, the last depth's best, though Bb5 has had more of its
+effort so far. At depth 16 Bb5, searched second, scores above d4 on its quick search and is
+searched again in full. A quarter of a second later the search is on its 26th move and Bb5 is
+the best: the second search confirmed it. It stays the best to the end.
+
 ## 8. The voice domain
 
 A voice node turns text into speech and speech into text. It never touches a microphone or a
@@ -929,5 +988,7 @@ These names are reserved, so that nothing else uses them:
   (cjus/chessgui#340); and the search tree (capability `tree`, `engine/tree` and
   `engine/treeNode`, the limits `maxTreeDepth`, `maxTreePlies` and `maxConcurrentTrees`, and
   the error `Expired`), reserved until then, so a client can show which moves a search looked
-  at and why it set each aside (cjus/chessgui#350). Its design came from
+  at and why it set each aside (cjus/chessgui#350); and following the root (capability `root`,
+  `rootMs` and `engine/root`), so a client can show which root move a search is on, where its
+  effort goes, and when it may be changing its mind (cjus/chessgui#357). Its design came from
   Solrac, a chess board that teaches, and cb2026, its engine.

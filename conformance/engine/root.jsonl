@@ -1,0 +1,13 @@
+{"session": "root", "description": "a search that follows its root gets engine/root before its result, and none after it (spec 7.9)", "requires": ["engine", "engine.root"]}
+{"send": {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocol": "1.0", "client": {"name": "cnp-conformance", "version": "1.0"}}}}
+{"expect": {"id": 1, "result": {"protocol": "1.0", "node": {"name": "$string", "version": "$string", "license": "$string"}, "capabilities": "$object"}}}
+{"send": {"jsonrpc": "2.0", "id": 2, "method": "engine/search", "params": {"position": {"fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"}, "limits": {"depth": 5}, "rootMs": 0}}}
+{"expect": {"method": "engine/root", "params": {"id": 2, "depth": "$integer", "move": "$move", "number": "$integer", "of": "$integer", "moves": "$array", "nodes": "$integer", "timeMs": "$integer"}}}
+{"expect": {"id": 2, "result": {"bestMove": "$move"}}}
+{"forbid": {"method": "engine/root", "params": {"id": 2}}, "comment": "nothing about the search after its result"}
+{"send": {"jsonrpc": "2.0", "id": 3, "method": "ping"}}
+{"expect": {"id": 3, "result": null}}
+{"send": {"jsonrpc": "2.0", "id": 99, "method": "shutdown"}}
+{"expect": {"id": 99, "result": null}}
+{"send": {"jsonrpc": "2.0", "method": "exit"}}
+{"expectExit": 0}
