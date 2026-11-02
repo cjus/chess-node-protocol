@@ -705,7 +705,21 @@ After a `failHigh` or a `failLow`, `move` and `number` are those the depth's nex
 with. A client MUST ignore a `research` of a kind it doesn't know: later minor versions may add
 them.
 
-EXAMPLE_PLACEHOLDER
+With cb2026, following the root of a search of the position in [7.1](#71-enginesearch), with
+three of the 27 moves' counts shown in each notification and the line shortened:
+
+```cnp
+→ {"jsonrpc": "2.0", "id": 20, "method": "engine/search", "params": {"position": {"fen": "r1bqkbnr/pppp1ppp/2n5/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 2 3"}, "limits": {"depth": 18}, "rootMs": 250}}
+← {"jsonrpc": "2.0", "method": "engine/root", "params": {"id": 20, "depth": 15, "move": "d2d4", "number": 1, "of": 27, "best": "d2d4", "moves": [{"move": "f1b5", "nodes": 243851}, {"move": "d2d4", "nodes": 180650}, {"move": "f1c4", "nodes": 133439}], "nodes": 651264, "timeMs": 601}}
+← {"jsonrpc": "2.0", "method": "engine/root", "params": {"id": 20, "depth": 16, "move": "f1b5", "number": 2, "of": 27, "best": "d2d4", "moves": [{"move": "d2d4", "nodes": 304188}, {"move": "f1b5", "nodes": 263912}, {"move": "f1c4", "nodes": 133945}], "nodes": 816665, "timeMs": 809, "research": {"kind": "better", "move": "f1b5"}}}
+← {"jsonrpc": "2.0", "method": "engine/root", "params": {"id": 20, "depth": 16, "move": "h2h3", "number": 26, "of": 27, "best": "f1b5", "moves": [{"move": "f1b5", "nodes": 447814}, {"move": "d2d4", "nodes": 304188}, {"move": "f1c4", "nodes": 143193}], "nodes": 1060864, "timeMs": 1059}}
+← {"jsonrpc": "2.0", "id": 20, "result": {"bestMove": "f1b5", "ponder": "a7a6", "score": {"cp": 30}, "pv": ["f1b5", "a7a6", "b5c6", "d7c6"], "depth": 18, "selDepth": 32, "nodes": 2171171, "timeMs": 2292, "stopped": false}}
+```
+
+At depth 15 the search starts with d4, the last depth's best, though Bb5 has had more of its
+effort so far. At depth 16 Bb5, searched second, scores above d4 on its quick search and is
+searched again in full. A quarter of a second later the search is on its 26th move and Bb5 is
+the best: the second search confirmed it. It stays the best to the end.
 
 ## 8. The voice domain
 
@@ -974,5 +988,7 @@ These names are reserved, so that nothing else uses them:
   (cjus/chessgui#340); and the search tree (capability `tree`, `engine/tree` and
   `engine/treeNode`, the limits `maxTreeDepth`, `maxTreePlies` and `maxConcurrentTrees`, and
   the error `Expired`), reserved until then, so a client can show which moves a search looked
-  at and why it set each aside (cjus/chessgui#350). Its design came from
+  at and why it set each aside (cjus/chessgui#350); and following the root (capability `root`,
+  `rootMs` and `engine/root`), so a client can show which root move a search is on, where its
+  effort goes, and when it may be changing its mind (cjus/chessgui#357). Its design came from
   Solrac, a chess board that teaches, and cb2026, its engine.
