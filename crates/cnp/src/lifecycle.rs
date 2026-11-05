@@ -129,6 +129,23 @@ pub struct InitializeResult {
     /// How far it will go.
     #[serde(default)]
     pub limits: Limits,
+    /// What the node was started with. Missing from nodes that don't say.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resources: Option<Resources>,
+}
+
+/// What a node was started with: facts for a client that chooses among nodes, such as one that
+/// asks a rack of machines which should search. Not limits: no request is refused for them, and
+/// none can change them.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Resources {
+    /// The search threads the node uses.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub threads: Option<u32>,
+    /// The hash memory the node uses, in megabytes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hash_mb: Option<u64>,
 }
 
 /// The node program: what it is, and where its source is.

@@ -2,7 +2,8 @@
 
 An open protocol between chess programs and the nodes that serve them: chess engines, and
 voice modules that speak and listen. It is JSON-RPC 2.0 over a child process's stdin/stdout,
-one message per line, and later over WebSocket with TLS.
+one message per line, or over TCP with TLS 1.3 to a node on another computer, with pairing
+and discovery on the local network (the spec's section 3).
 
 CNP goes further than UCI. A search can be limited to some root moves or to a score window. An
 engine's techniques can be switched on and off for teaching. A search can ask for progress,
