@@ -725,3 +725,33 @@ fn move_text_is_two_squares_and_maybe_a_promotion() {
         assert!(!engine::is_move_text(bad), "{bad}");
     }
 }
+
+#[test]
+fn resources_are_optional_in_initializes_result_and_say_what_a_node_runs_with() {
+    let older = json!({
+        "protocol": "1.0",
+        "node": {"name": "n", "version": "1", "license": "MIT"},
+        "capabilities": {}
+    });
+    let result: lifecycle::InitializeResult = serde_json::from_value(older.clone()).unwrap();
+    assert_eq!(result.resources, None);
+    // A node that doesn't say leaves the field out, so its answer is what it always was.
+    assert_eq!(
+        serde_json::to_value(&result).unwrap().get("resources"),
+        None
+    );
+
+    let mut newer = older;
+    newer["resources"] = json!({"threads": 8, "hashMb": 1024, "somethingNew": true});
+    let result: lifecycle::InitializeResult = serde_json::from_value(newer).unwrap();
+    assert_eq!(
+        result.resources,
+        Some(lifecycle::Resources {
+            threads: Some(8),
+            hash_mb: Some(1024)
+        })
+    );
+    // Either may be missing.
+    let partial: lifecycle::Resources = serde_json::from_value(json!({"threads": 2})).unwrap();
+    assert_eq!(partial.hash_mb, None);
+}

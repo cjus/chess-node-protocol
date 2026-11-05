@@ -104,10 +104,106 @@ input and output.
   ([6.3](#63-limits)). A node answers it with an `InvalidRequest` error whose `id` is `null`,
   and reads on from the next line.
 
-### 3.2 The network
+### 3.2 The network: TLS over TCP
 
-CNP over WebSocket with TLS, with credentials given when the connection opens, is reserved for
-a later minor version ([13](#13-reserved-for-later-versions)). The messages will be the same.
+A node MAY also serve clients on other computers. The messages, and their framing, are those of
+[3.1](#31-stdinstdout): one line of UTF-8 JSON each, ending in `\n`. They travel over a TCP
+connection protected by TLS 1.3. A node is started with this transport only by a person who
+asks for it; **a node MUST NOT listen beyond its own computer without TLS and the checks below**.
+
+- **Port.** A node SHOULD listen on TCP port **4026** unless told another. A client is told the
+  port by the person, or by discovery ([3.3](#33-finding-a-node-on-the-local-network)).
+- **TLS 1.3 only,** with a certificate on **both** sides. A node MUST require a client
+  certificate. Certificates are self-signed and made on first use; there is no authority.
+- **A node is recognised by its fingerprint,** the SHA-256 of its certificate's DER encoding,
+  written as 32 pairs of uppercase hexadecimal digits separated by colons
+  (`AB:CD:…`, 95 characters). No name, chain or date in a certificate is checked, but each
+  side MUST verify the handshake's signature, which proves the peer holds the certificate's
+  private key. A client that has paired with a node (below) MUST refuse a connection whose
+  certificate has any other fingerprint.
+- **A node serves only approved clients.** It keeps a list of client fingerprints and checks the
+  client's after the handshake. A person removes a client from the list to revoke it, and the
+  node MUST apply that at the client's next connection. A client that isn't on the list MAY send
+  one pairing request (below) and nothing else; the node otherwise closes the connection
+  **without replying**, so that a refusal tells a guesser nothing.
+- **Pairing** puts a client on the list, once:
+  1. The person at the node starts pairing. The node shows its fingerprint and a **one-time
+     code** of eight digits. The code MUST work for one client only, for at most five minutes,
+     and the window MUST close after at most three wrong codes.
+  2. The client connects, not yet knowing the node's fingerprint, and reads the fingerprint
+     from the certificate it is shown. **The client MUST show it to the person and wait for
+     them to confirm it is the one the node displays, before it sends the code.** This
+     comparison is what stops someone in the middle; the code alone does not.
+  3. The client sends one line, at most 1,024 bytes, and the node answers `paired` and closes
+     the connection, or closes it without a word. The client then connects again as an approved
+     client:
+
+```transport
+→ {"cnp": "pair", "code": "12345678", "name": "Carlos's iMac"}
+← {"cnp": "paired"}
+```
+
+  `name` is optional, a label the node keeps beside the fingerprint to tell clients apart.
+  The code is typed by a person, so a node SHOULD ignore spaces and hyphens in it.
+- **One client at a time.** A node MAY serve one approved client at once. When another
+  approved client connects, the node sends one `Busy` error with a `null` id and closes the
+  connection:
+
+```transport
+← {"jsonrpc": "2.0", "id": null, "error": {"code": -32013, "message": "this node is serving another client"}}
+```
+
+- **Disconnecting cancels.** When a client's connection ends, for any reason, the node cancels
+  the client's searches and forgets its state. Nothing resumes on a later connection, and ids
+  belong to one connection.
+- **Deadlines.** A node SHOULD close a connection that has not finished its handshake and sent
+  its first message within about ten seconds, counting the whole of it, not each read. It
+  MUST NOT close a connection merely for being silent afterwards, because a client waiting
+  for a long search sends nothing. It SHOULD use TCP keepalive to find a client that has
+  vanished.
+- **Limits.** A node on the network SHOULD advertise a `maxMessageBytes` much smaller than the
+  default ([6.3](#63-limits)), and SHOULD limit how many connections it greets at once, in
+  all and from one address, and ignore an address that keeps failing.
+
+WebSocket over TLS, for programs that can't open a TCP connection, is still reserved
+([13](#13-reserved-for-later-versions)).
+
+### 3.3 Finding a node on the local network
+
+A client MAY look for nodes with a UDP probe. This only says *where a node claims to be*:
+a client never trusts it, and connects and checks the fingerprint as in
+[3.2](#32-the-network-tls-over-tcp). A node answers probes only when its owner has asked it to.
+
+- **Probe.** A datagram of exactly **320 bytes**: the JSON below, padded with spaces. The client
+  sends it to UDP port **4026**, at the broadcast address of each of its network interfaces
+  and at `255.255.255.255` (which on some systems reaches only one interface), and MAY send it
+  again once. A node ignores a datagram of any other size or content.
+- **Reply.** One JSON object, sent to the address and port the probe came from, never longer
+  than the probe:
+
+```transport
+→ {"cnp": "probe", "v": 1}
+← {"cnp": "here", "v": 1, "name": "the study", "protocol": "1.0", "port": 4026, "fingerprint": "AB:CD:EF:01:23:45:67:89:AB:CD:EF:01:23:45:67:89:AB:CD:EF:01:23:45:67:89:AB:CD:EF:01:23:45:67:89", "pairing": false}
+```
+
+  | Field | Type | |
+  | --- | --- | --- |
+  | `name` | string | A name its owner chose, at most 32 bytes. Not the computer's name |
+  | `protocol` | string | The CNP version it speaks, `major.minor` |
+  | `port` | integer | The TCP port, on the address the reply came from |
+  | `fingerprint` | string | Its certificate's fingerprint |
+  | `pairing` | boolean | Whether a pairing window is open now |
+
+  A client ignores a reply that is longer than a probe, isn't this JSON, has a `port` of zero,
+  or has a fingerprint that doesn't read.
+- **No amplification and no leaks.** A source address can be forged, so a reply MUST NOT be
+  longer than the probe it answers. A node SHOULD answer at most a few probes a second to one
+  address (cb2026: 4) and a few dozen in all (40), and bound the memory that counts them. A
+  reply MUST NOT contain anything private: no hostname, user name, path or hardware.
+- **Opt-in.** A node MUST NOT answer probes unless it also requires TLS and approved clients.
+- **Limits of broadcast.** It reaches the local network segment only. It does not cross a
+  router or VLAN, many Wi-Fi access points keep clients from seeing each other, and a firewall
+  can block the port; a client MUST also let a person type an address. IPv4 only for now.
 
 ## 4. Messages
 
@@ -153,7 +249,7 @@ already been answered, or that never existed, does nothing: the two messages can
 ```text
   client                                       node
   initialize {protocol, client} ────────────▶
-                ◀────────────── {protocol, node, capabilities, limits}
+                ◀────────────── {protocol, node, capabilities, limits, resources?}
   … requests, notifications, ping at any time …
   shutdown ─────────────────────────────────▶  ends its work
                 ◀────────────── null
@@ -181,6 +277,7 @@ Result:
 | `node` | object | The node: `name`, `version`, `license` (an [SPDX](https://spdx.org/licenses/) expression), and optionally `author` and `source` (a URL to its source code) |
 | `capabilities` | object | What the node can do ([6.1](#61-capabilities)) |
 | `limits` | object | How far it will go ([6.3](#63-limits)) |
+| `resources` | object | Optional. What the node was started with, for a client that chooses among nodes: `threads`, the search threads it uses, and `hashMb`, its hash memory in megabytes. Either may be missing. They are facts, not limits: a request can't change them, and none is refused for them |
 
 The version spoken is the client's major version, with the lower of the two minor versions. If
 the node doesn't speak the client's major version, it answers with `IncompatibleVersion`, whose
@@ -212,7 +309,7 @@ first, and 1 otherwise. The end of the node's input means the same as `exit`.
 
 ```cnp
 → {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocol": "1.0", "client": {"name": "Solrac", "version": "0.2.0"}}}
-← {"jsonrpc": "2.0", "id": 1, "result": {"protocol": "1.0", "node": {"name": "cb2026", "version": "0.9.0", "license": "MIT OR Apache-2.0", "source": "https://github.com/cjus/chessengine"}, "capabilities": {"engine": {"multipv": true, "window": true, "rootMoves": true, "strength": true, "techniques": true, "deterministic": true, "clock": true, "mate": true, "chess960": true, "progress": true}}, "limits": {"maxDepth": 128, "maxTimeMs": 3600000, "maxMultipv": 8, "maxConcurrentSearches": 4}}}
+← {"jsonrpc": "2.0", "id": 1, "result": {"protocol": "1.0", "node": {"name": "cb2026", "version": "0.9.0", "license": "MIT OR Apache-2.0", "source": "https://github.com/cjus/chessengine"}, "capabilities": {"engine": {"multipv": true, "window": true, "rootMoves": true, "strength": true, "techniques": true, "deterministic": true, "clock": true, "mate": true, "chess960": true, "progress": true}}, "limits": {"maxDepth": 128, "maxTimeMs": 3600000, "maxMultipv": 8, "maxConcurrentSearches": 4}, "resources": {"threads": 8, "hashMb": 1024}}}
 → {"jsonrpc": "2.0", "id": 2, "method": "engine/search", "params": {"position": {"fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", "moves": ["e2e4", "e7e5"]}, "limits": {"timeMs": 1000}, "progressMs": 250, "game": "g1"}}
 ← {"jsonrpc": "2.0", "method": "engine/progress", "params": {"id": 2, "depth": 12, "selDepth": 19, "score": {"cp": 24}, "pv": ["g1f3", "b8c6", "f1b5"], "nodes": 412530, "nps": 1650120, "timeMs": 250}}
 ← {"jsonrpc": "2.0", "id": 2, "result": {"bestMove": "g1f3", "ponder": "b8c6", "score": {"cp": 27}, "pv": ["g1f3", "b8c6", "f1b5", "a7a6"], "depth": 16, "selDepth": 27, "nodes": 1702214, "timeMs": 1000, "stopped": false, "stats": {"hashFull": 87}}}
@@ -931,15 +1028,19 @@ its own outside the ranges below.
 
 ## 10. Security
 
-A node started by a client trusts that client. A node on the network trusts no one. Version 1.0
-already holds both to these rules, so that the network can be added without changing them:
+A node started by a client trusts that client. A node on the network trusts no one: it uses TLS
+with both sides' certificates, serves only clients a person approved, and says nothing to anyone
+else ([3.2](#32-the-network-tls-over-tcp)). Both are held to these rules, which are the same on
+any transport:
 
 - **No file paths in any request.** Opening books, tablebases and models are the node's own
   configuration. A request that can name a file is how a server is turned against itself.
 - **Advertised limits** for depth, nodes, time, lines, concurrent searches, trees and message
   size. Requests beyond them are refused, not trimmed. A node bounds what it keeps for a client,
   the trees of [7.8](#78-the-search-tree), and drops the oldest rather than run out of memory.
-- **Credentials never travel in messages,** and are never logged.
+- **Credentials never travel in messages,** and are never logged. A pairing code is the one
+  secret a client sends, once, in the pairing request of [3.2](#32-the-network-tls-over-tcp),
+  after the person has confirmed the node's fingerprint; it is never kept after use.
 
 ## 11. Versions
 
@@ -962,8 +1063,8 @@ conforms to CNP 1.0 if it passes every session that applies to it. See `conforma
 
 These names are reserved, so that nothing else uses them:
 
-- **WebSocket over TLS** ([3.2](#32-the-network)), with credentials given when the connection
-  opens, never in messages.
+- **WebSocket over TLS**, for programs that can't open a TCP connection ([3.2](#32-the-network-tls-over-tcp)
+  specifies TLS over TCP), with credentials given when the connection opens, never in messages.
 - **Distributed search:** `worker/register`, which a worker sends after connecting out to a
   coordinator, with its capabilities and hardware. Either side may then send requests.
 - **Streamed speech:** `voice/speak` sending its audio piece by piece.
@@ -972,6 +1073,12 @@ These names are reserved, so that nothing else uses them:
 
 ## 14. Changes
 
+- **1.0 (draft), 2026-11-05**, added to the draft as pondering was: **the network**
+  ([3.2](#32-the-network-tls-over-tcp), [3.3](#33-finding-a-node-on-the-local-network)): TLS 1.3
+  over TCP with self-signed certificates pinned by fingerprint on both sides, pairing with a
+  one-time code, one client at a time, and discovery by a UDP probe; and `resources` in
+  `initialize`'s result, so a client can tell a node with 64 threads from one with 1. Both are
+  optional, so a node or client that doesn't know them is unaffected (cjus/chessengine#209).
 - **1.0 (draft)**, 2026-10-21: the first version. Before it was final: `chess960` in a
   position, so a Chess960 game says so; and listening (`listen`, `voice/listen`,
   `voice/audio`, `voice/speechStarted`, `voice/heard`, and the purpose `listen`), so a player

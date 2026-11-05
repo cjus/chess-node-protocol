@@ -106,6 +106,7 @@ fn answer(request: &Request, state: &mut State, limits: &Limits) -> Response {
                 // A real node lists its domains here.
                 capabilities: Capabilities::default(),
                 limits: limits.clone(),
+                resources: None,
             };
             Response::ok::<Initialize>(id, &result)
         }
