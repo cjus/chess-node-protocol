@@ -10,6 +10,7 @@
 //! | `voice/listen` | request | [`Listen`]: [`ListenParams`] → [`ListenResult`] |
 //! | `voice/audio` | notification, client to node | [`Audio`]: [`AudioParams`] |
 //! | `voice/speechStarted` | notification, node to client | [`SpeechStarted`]: [`SpeechStartedParams`] |
+//! | `voice/hearing` | notification, node to client | [`Hearing`]: [`HearingParams`] |
 //! | `voice/heard` | notification, node to client | [`Heard`]: [`HeardParams`] |
 //!
 //! A voice node only turns text into audio and audio into text: it never touches a
@@ -67,6 +68,9 @@ pub struct VoiceCapabilities {
     /// Words the client expects to be said, favoured in what is heard (`hotwords`).
     #[serde(default)]
     pub hotwords: bool,
+    /// What is said so far, while it is still being said (`voice/hearing`, `partialMs`).
+    #[serde(default)]
+    pub partials: bool,
     /// The audio formats it reads and writes.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub formats: Vec<AudioFormat>,
@@ -357,6 +361,10 @@ pub struct ListenParams {
     /// Whether `voice/heard` gives each word's start and end (capability `wordTimes`).
     #[serde(default, skip_serializing_if = "is_false")]
     pub word_times: bool,
+    /// About how often the node sends `voice/hearing` while someone speaks, in milliseconds
+    /// (capability `partials`). Missing or 0: never.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub partial_ms: Option<u64>,
     /// Words and phrases likely to be said, for every utterance (capability `hotwords`).
     /// Missing: none.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -375,6 +383,7 @@ impl ListenParams {
             max_speech_ms: None,
             lead_in_ms: None,
             word_times: false,
+            partial_ms: None,
             hotwords: Vec::new(),
         }
     }
@@ -425,6 +434,28 @@ pub struct SpeechStartedParams {
     /// The `voice/listen` request it belongs to.
     pub id: Id,
     /// About where the speaker started, in milliseconds into the listen's audio.
+    pub start_ms: u64,
+}
+
+/// The `voice/hearing` notification, from the node: what someone has said so far, while they
+/// still speak. Sent only to a listen that asked for it (`partialMs`).
+pub enum Hearing {}
+
+impl NotificationMethod for Hearing {
+    const NAME: &'static str = "voice/hearing";
+    type Params = HearingParams;
+}
+
+/// What an utterance has been heard to say so far. Each replaces the one before, and the
+/// utterance's [`HeardParams`] replaces the last: a word may change as more is heard.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HearingParams {
+    /// The `voice/listen` request it belongs to.
+    pub id: Id,
+    /// What is made out of the utterance so far. Empty if no words are yet.
+    pub text: String,
+    /// Where the utterance starts, in milliseconds into the listen's audio.
     pub start_ms: u64,
 }
 

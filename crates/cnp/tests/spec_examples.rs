@@ -90,6 +90,7 @@ fn notification_params(notification: &Notification) -> Result<(), String> {
         "voice/modelState" => notification.params::<voice::ModelStateChanged>().map(drop),
         "voice/audio" => notification.params::<voice::Audio>().map(drop),
         "voice/speechStarted" => notification.params::<voice::SpeechStarted>().map(drop),
+        "voice/hearing" => notification.params::<voice::Hearing>().map(drop),
         "voice/heard" => notification.params::<voice::Heard>().map(drop),
         other => return Err(format!("no notification {other} in the crate")),
     };

@@ -142,6 +142,22 @@ fn a_listen_and_its_audio_leave_out_what_isnt_said() {
     };
     let heard = heard.params::<voice::Heard>().unwrap();
     assert_eq!((heard.text.as_str(), heard.words.len()), ("", 0));
+    let hearing = parse(json!({"jsonrpc": "2.0", "method": "voice/hearing",
+        "params": {"id": 30, "text": "Knight to", "startMs": 10}}));
+    let Message::Notification(hearing) = hearing else {
+        panic!("not a notification")
+    };
+    let hearing = hearing.params::<voice::Hearing>().unwrap();
+    assert_eq!((hearing.text.as_str(), hearing.start_ms), ("Knight to", 10));
+    // A listen asks for partials, and says nothing of them otherwise.
+    let mut asked = voice::ListenParams::new(16000);
+    assert!(!serde_json::to_string(&asked).unwrap().contains("partialMs"));
+    asked.partial_ms = Some(500);
+    assert!(
+        serde_json::to_string(&asked)
+            .unwrap()
+            .contains("\"partialMs\":500")
+    );
 }
 
 #[test]
