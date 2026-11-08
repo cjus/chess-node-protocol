@@ -834,6 +834,7 @@ hears, and the node says when someone speaks and what they said.
 | `voice/listen` | request | Hear speech as it comes, until the audio ends |
 | `voice/audio` | notification, client to node | The next piece of a listen's audio |
 | `voice/speechStarted` | notification, node to client | Someone has started speaking |
+| `voice/hearing` | notification, node to client | What they have said so far, while they still speak (capability `partials`) |
 | `voice/heard` | notification, node to client | What they said, once they paused |
 
 Capabilities:
@@ -845,6 +846,7 @@ Capabilities:
 | `listen` | boolean | `voice/listen`, and the notifications that go with it |
 | `wordTimes` | boolean | Each word's start and end, in either direction |
 | `hotwords` | boolean | Words the client expects to be said, favoured in what is heard (`hotwords`, below) |
+| `partials` | boolean | `voice/hearing`: what is said so far, while it is still being said (`partialMs`, below) |
 | `formats` | array of strings | The audio formats it reads and writes |
 
 Audio formats:
@@ -956,6 +958,7 @@ Params:
 | `maxSpeechMs` | integer | The longest one utterance may be: at this length it ends, pause or not. Missing: the node decides |
 | `leadInMs` | integer | How much of the audio from before an utterance's start it is heard with, so that a short first word said fast isn't cut off; 0 for none. Missing: the node decides |
 | `wordTimes` | boolean | Return each word's start and end in `voice/heard` (needs `wordTimes`) |
+| `partialMs` | integer | Send `voice/hearing` about this often while someone speaks, so the client can show their words as they are said (needs `partials`). Missing or 0: never |
 | `hotwords` | array of strings | Words and phrases likely to be said, for every utterance of the listen (needs `hotwords`). Missing: none |
 
 Wrong params are `InvalidParams`, a duration of 0 (but `leadInMs`) or one the node can't keep
@@ -979,6 +982,14 @@ node hears each utterance, it sends:
 
 - **`voice/speechStarted`**, `{"id": …, "startMs": …}`, once it is sure someone is speaking
   (after `minSpeechMs` of speech). `startMs` is about where they started.
+- **`voice/hearing`**, `{"id": …, "text": …, "startMs": …}`, only if the listen asked for it
+  (`partialMs`): what the node makes out of the utterance so far, again about every `partialMs`
+  while it goes on. Each replaces the one before, which it may revise: a word can change as
+  more is heard. It is for showing, not for acting on, and the utterance's `voice/heard`,
+  which is always the node's best hearing of all of it, replaces the last. It comes after
+  `voice/speechStarted` and before the utterance's `voice/heard`, and is empty if no words
+  are made out yet. A node MAY skip one when it is busy, and sends none after the utterance's
+  `voice/heard`.
 - **`voice/heard`**, once they have paused for `endSilenceMs` and the node has transcribed what
   they said: `id`, `text` (empty if no words were made out), `startMs` and `endMs` (where the
   speech starts and ends), and `words` if asked for.
@@ -993,10 +1004,11 @@ cancelled listen ([4.1](#41-cancelling-a-request)) drops whatever it was hearing
 The audio is shortened here:
 
 ```cnp
-→ {"jsonrpc": "2.0", "id": 30, "method": "voice/listen", "params": {"format": "pcmF32", "sampleRate": 16000, "endSilenceMs": 800, "hotwords": ["knight", "bishop", "castle"]}}
+→ {"jsonrpc": "2.0", "id": 30, "method": "voice/listen", "params": {"format": "pcmF32", "sampleRate": 16000, "endSilenceMs": 800, "partialMs": 500, "hotwords": ["knight", "bishop", "castle"]}}
 → {"jsonrpc": "2.0", "method": "voice/audio", "params": {"id": 30, "audio": "AAAAAAAAAAA="}}
 ← {"jsonrpc": "2.0", "method": "voice/speechStarted", "params": {"id": 30, "startMs": 1240}}
 → {"jsonrpc": "2.0", "method": "voice/audio", "params": {"id": 30, "audio": "AAAAAAAAAAA="}}
+← {"jsonrpc": "2.0", "method": "voice/hearing", "params": {"id": 30, "text": "Knight to", "startMs": 1210}}
 ← {"jsonrpc": "2.0", "method": "voice/heard", "params": {"id": 30, "text": "Knight to f3.", "startMs": 1210, "endMs": 2380}}
 → {"jsonrpc": "2.0", "method": "voice/audio", "params": {"id": 30, "end": true}}
 ← {"jsonrpc": "2.0", "id": 30, "result": {"durationMs": 4000}}
@@ -1073,6 +1085,10 @@ These names are reserved, so that nothing else uses them:
 
 ## 14. Changes
 
+- **1.0 (draft), 2026-11-08**, added to the draft: **live partials** (capability `partials`, a
+  listen's `partialMs` and the notification `voice/hearing`), so a client can show a player's
+  words as they are said. All optional: a node that doesn't offer it, or a listen that doesn't
+  ask, is unchanged (cjus/chessgui#500).
 - **1.0 (draft), 2026-11-05**, added to the draft as pondering was: **the network**
   ([3.2](#32-the-network-tls-over-tcp), [3.3](#33-finding-a-node-on-the-local-network)): TLS 1.3
   over TCP with self-signed certificates pinned by fingerprint on both sides, pairing with a
