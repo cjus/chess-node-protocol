@@ -38,6 +38,15 @@
 //! "night". The client knows its domain, so the node needn't: a chess board sends the words
 //! of a move, another program its own.
 //!
+//! ## Pronunciations
+//!
+//! A client that knows how a word is said, and a node's model might not (a player's name, an
+//! opening's), gives it with `voice/speak` as [`Pronunciation`]s (capability `pronunciations`):
+//! the word and its sounds in the International Phonetic Alphabet. The node says that word as
+//! given, wherever it appears in the text. Each request carries its own, as it does hotwords,
+//! so a request stands alone, and the node keeps no list between requests. A node that can't
+//! say an entry's sounds ignores that entry rather than fail the speech.
+//!
 //! A node downloads and loads its own models, and says how far it has got
 //! with `voice/modelState`; until a model is ready, requests that need it are answered with
 //! [`code::NOT_READY`](crate::code::NOT_READY).
@@ -71,6 +80,9 @@ pub struct VoiceCapabilities {
     /// What is said so far, while it is still being said (`voice/hearing`, `partialMs`).
     #[serde(default)]
     pub partials: bool,
+    /// Words whose sounds the client gives, in `voice/speak` (`pronunciations`).
+    #[serde(default)]
+    pub pronunciations: bool,
     /// The audio formats it reads and writes.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub formats: Vec<AudioFormat>,
@@ -146,6 +158,23 @@ pub struct SpeakParams {
     /// Whether to return each word's start and end (capability `wordTimes`).
     #[serde(default, skip_serializing_if = "is_false")]
     pub word_times: bool,
+    /// How words in `text` are said (capability `pronunciations`). Missing: none.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub pronunciations: Vec<Pronunciation>,
+}
+
+/// How one word is said: the word, and its sounds in the International Phonetic Alphabet.
+///
+/// The node matches `word` in the text without regard to case, whole words only, and says
+/// `ipa` for it. Stress marks (`ˈ`, `ˌ`) and length marks are part of the notation; spaces are
+/// not allowed in either field.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Pronunciation {
+    /// The word as it is written in the text, with no spaces: "Nimzowitsch".
+    pub word: String,
+    /// Its sounds in IPA, with no spaces: "ˈnɪmzoʊˌvɪtʃ".
+    pub ipa: String,
 }
 
 /// The speech.

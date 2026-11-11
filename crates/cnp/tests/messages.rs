@@ -161,6 +161,37 @@ fn a_listen_and_its_audio_leave_out_what_isnt_said() {
 }
 
 #[test]
+fn a_speak_request_gives_pronunciations_only_when_it_has_some() {
+    let plain = voice::SpeakParams {
+        text: "Knight to f3.".into(),
+        voice: None,
+        speed: None,
+        format: None,
+        word_times: false,
+        pronunciations: Vec::new(),
+    };
+    assert_eq!(
+        serde_json::to_value(&plain).unwrap(),
+        json!({"text": "Knight to f3."})
+    );
+    let said = voice::SpeakParams {
+        pronunciations: vec![voice::Pronunciation {
+            word: "Nimzowitsch".into(),
+            ipa: "ˈnɪmzoʊˌvɪtʃ".into(),
+        }],
+        ..plain
+    };
+    let value = serde_json::to_value(&said).unwrap();
+    assert_eq!(
+        value["pronunciations"],
+        json!([{"word": "Nimzowitsch", "ipa": "ˈnɪmzoʊˌvɪtʃ"}])
+    );
+    // And a node that doesn't know the field reads the request as a plain one.
+    let back: voice::SpeakParams = serde_json::from_value(value).unwrap();
+    assert_eq!(back, said);
+}
+
+#[test]
 fn a_method_without_params_sends_none_and_reads_none() {
     let request = Request::new::<lifecycle::Ping>(1, &NoParams);
     assert_eq!(request.params, None);

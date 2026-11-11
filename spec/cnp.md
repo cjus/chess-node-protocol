@@ -847,6 +847,7 @@ Capabilities:
 | `wordTimes` | boolean | Each word's start and end, in either direction |
 | `hotwords` | boolean | Words the client expects to be said, favoured in what is heard (`hotwords`, below) |
 | `partials` | boolean | `voice/hearing`: what is said so far, while it is still being said (`partialMs`, below) |
+| `pronunciations` | boolean | Words whose sounds the client gives, in `voice/speak` (`pronunciations`, below) |
 | `formats` | array of strings | The audio formats it reads and writes |
 
 Audio formats:
@@ -860,6 +861,18 @@ product's names) MAY give them with `voice/transcribe` and `voice/listen`, if th
 "knight" over "night", "pawn" over "on". How much is the node's choice. A hotword that is empty
 or holds a line break is `InvalidParams`, and a node MAY refuse more hotwords than it can take
 the same way. A node without `hotwords` ignores them.
+
+**Pronunciations.** A client that knows how a word is said, and the node's model may not (a
+player's name, an opening's), MAY give it with `voice/speak`, if the node offers
+`pronunciations`: an array of `{"word", "ipa"}`, the word as written in the text and its sounds
+in the [International Phonetic Alphabet](https://www.internationalphoneticassociation.org/),
+with stress and length marks, such as `ˈ` and `ˌ`. The node says that word as given wherever it
+appears in `text`, matching whole words without regard to case. Each request carries its own,
+so a request stands alone and the node keeps nothing between requests. A `word` or an `ipa` that
+is empty or holds a space or a line break is `InvalidParams`, and a node MAY refuse more entries
+than it can take the same way. A node that has no phoneme for a symbol in an entry's `ipa`
+ignores that entry, so one entry never silences a reply. A node without `pronunciations`
+ignores them all.
 
 The voice domain stands on its own: a voice node needs only this section, the lifecycle
 ([5](#5-lifecycle)) and the errors ([9](#9-errors)), and none of the engine domain.
@@ -887,8 +900,9 @@ Params:
 | `speed` | number | 1.0 is the voice's own pace |
 | `format` | string | The audio format wanted. Missing: `wav` |
 | `wordTimes` | boolean | Return each word's start and end, if the model can tell (needs `wordTimes`) |
+| `pronunciations` | array | How words in `text` are said: each `word` and its `ipa` (needs `pronunciations`, above). Missing: none |
 
-An unknown voice is `InvalidParams`. The result:
+An unknown voice, or a pronunciation that is malformed, is `InvalidParams`. The result:
 
 | Field | Type | |
 | --- | --- | --- |
@@ -903,6 +917,12 @@ The audio is shortened here:
 ```cnp
 → {"jsonrpc": "2.0", "id": 20, "method": "voice/speak", "params": {"text": "Knight to f3.", "voice": "am_michael", "format": "pcmF32", "wordTimes": true}}
 ← {"jsonrpc": "2.0", "id": 20, "result": {"format": "pcmF32", "sampleRate": 24000, "audio": "AAAAAAAAAAA=", "durationMs": 1150, "words": [{"text": "Knight", "startMs": 40, "endMs": 390}, {"text": "to", "startMs": 390, "endMs": 520}, {"text": "f3", "startMs": 520, "endMs": 1100}]}}
+```
+
+A name the model would get wrong, said as given:
+
+```cnp
+→ {"jsonrpc": "2.0", "id": 21, "method": "voice/speak", "params": {"text": "Nimzowitsch played the Sveshnikov.", "pronunciations": [{"word": "Nimzowitsch", "ipa": "ˈnɪmzoʊˌvɪtʃ"}, {"word": "Sveshnikov", "ipa": "ˈsvɛʃnəˌkɔv"}]}}
 ```
 
 ### 8.3 `voice/transcribe`
@@ -1085,6 +1105,11 @@ These names are reserved, so that nothing else uses them:
 
 ## 14. Changes
 
+- **1.0 (draft), 2026-11-11**, added to the draft: **pronunciations** (capability
+  `pronunciations` and `voice/speak`'s `pronunciations`), so a client can say how a word the
+  node's model may get wrong is said, in IPA, rather than the voice node knowing a client's
+  names. Optional: a node that doesn't offer it, or a request that doesn't send it, is unchanged
+  (cjus/chessgui#539).
 - **1.0 (draft), 2026-11-08**, added to the draft: **live partials** (capability `partials`, a
   listen's `partialMs` and the notification `voice/hearing`), so a client can show a player's
   words as they are said. All optional: a node that doesn't offer it, or a listen that doesn't
