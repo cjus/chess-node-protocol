@@ -1,0 +1,15 @@
+{"session": "pronunciations-bad-params", "description": "a pronunciation whose word or ipa is empty or holds a space or a line break is InvalidParams in voice/speak, whether or not the models are ready (spec 8)", "requires": ["voice", "voice.pronunciations", "voice.speak"]}
+{"send": {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocol": "1.0", "client": {"name": "cnp-conformance", "version": "1.0"}}}}
+{"expect": {"id": 1, "result": {"protocol": "1.0", "node": {"name": "$string", "version": "$string", "license": "$string"}, "capabilities": "$object"}}}
+{"send": {"jsonrpc": "2.0", "id": 2, "method": "voice/speak", "params": {"text": "Knight to f3.", "pronunciations": [{"word": "", "ipa": "naɪt"}]}}}
+{"expect": {"id": 2, "error": {"code": -32602, "message": "$string"}}}
+{"send": {"jsonrpc": "2.0", "id": 3, "method": "voice/speak", "params": {"text": "Knight to f3.", "pronunciations": [{"word": "knight", "ipa": ""}]}}}
+{"expect": {"id": 3, "error": {"code": -32602, "message": "$string"}}}
+{"send": {"jsonrpc": "2.0", "id": 4, "method": "voice/speak", "params": {"text": "Knight to f3.", "pronunciations": [{"word": "two words", "ipa": "naɪt"}]}}}
+{"expect": {"id": 4, "error": {"code": -32602, "message": "$string"}}}
+{"send": {"jsonrpc": "2.0", "id": 5, "method": "voice/speak", "params": {"text": "Knight to f3.", "pronunciations": [{"word": "knight", "ipa": "na\nɪt"}]}}}
+{"expect": {"id": 5, "error": {"code": -32602, "message": "$string"}}}
+{"send": {"jsonrpc": "2.0", "id": 99, "method": "shutdown"}}
+{"expect": {"id": 99, "result": null}}
+{"send": {"jsonrpc": "2.0", "method": "exit"}}
+{"expectExit": 0}
