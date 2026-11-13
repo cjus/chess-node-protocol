@@ -8,6 +8,11 @@ fn manifest() -> serde_json::Value {
         "license":"CC0-1.0","attribution":"Lichess"})
 }
 
+fn source() -> serde_json::Value {
+    json!({"checksum":"a".repeat(64),"kind":"lichess-puzzles","name":"Lichess puzzles",
+        "release":"2026-11","license":"CC0-1.0","attribution":"Lichess"})
+}
+
 fn params() -> knowledge::ImportParams {
     serde_json::from_value(json!({"kind":"lichess-puzzles",
         "path":"/Users/carlos/Downloads/lichess_db_puzzle.csv.zst","manifest":manifest()}))
@@ -155,6 +160,8 @@ fn the_specs_json_examples_are_valid() {
         let text = block
             .replace("3f1c0d…64 hex digits…9a", &full)
             .replace("3f1c0d…9a", &full)
+            .replace("{ ... a source ... }", &source().to_string())
+            .replace("\"next\": \"…\"", "\"next\": \"x\"")
             .replace("{ ... a manifest ... }", &manifest().to_string())
             .replace("{ ... an import, verifying ... }", "{\"kind\":\"k\",\"checksum\":\"a\",\"name\":\"n\",\"release\":\"r\",\"state\":\"verifying\",\"read\":0,\"accepted\":0,\"rejected\":0,\"duplicate\":0,\"startedAt\":\"2026-11-13T10:05:00.000Z\"}")
             .replace("{ ... an import ... }", "{\"kind\":\"k\",\"checksum\":\"a\",\"name\":\"n\",\"release\":\"r\",\"state\":\"complete\",\"read\":0,\"accepted\":0,\"rejected\":0,\"duplicate\":0,\"startedAt\":\"2026-11-13T10:05:00.000Z\"}");
@@ -172,6 +179,34 @@ fn the_specs_json_examples_are_valid() {
             serde_json::from_value::<knowledge::ImportResult>(value).unwrap();
         } else if value.get("imports").is_some() {
             serde_json::from_value::<knowledge::StatusResult>(value).unwrap();
+        } else if value.get("puzzles").is_some() {
+            let r: knowledge::PuzzlesResult = serde_json::from_value(value).unwrap();
+            assert_eq!(r.puzzles[0].moves.len(), 6);
+        } else if value.get("analyses").is_some() {
+            let r: knowledge::AnalysesResult = serde_json::from_value(value).unwrap();
+            assert_eq!(
+                r.analyses[0].perspective,
+                knowledge::Perspective::Unspecified
+            );
+        } else if value.get("exercises").is_some() {
+            let r: knowledge::ExercisesResult = serde_json::from_value(value).unwrap();
+            assert_eq!(r.exercises[0].candidates[0].uci, "f4f5");
+        } else if value.get("minRating").is_some() {
+            serde_json::from_value::<knowledge::PuzzlesParams>(value)
+                .unwrap()
+                .validate()
+                .unwrap();
+        } else if value.get("fen").is_some() {
+            serde_json::from_value::<knowledge::AnalysesParams>(value)
+                .unwrap()
+                .validate()
+                .unwrap();
+        } else if value.get("checksum").is_some()
+            && value.get("kind").is_some()
+            && value.get("attribution").is_some()
+            && value.get("state").is_none()
+        {
+            serde_json::from_value::<knowledge::Source>(value).unwrap();
         } else if value.get("license").is_some() {
             serde_json::from_value::<knowledge::Manifest>(value)
                 .unwrap()
@@ -179,10 +214,119 @@ fn the_specs_json_examples_are_valid() {
                 .unwrap();
         } else if value.get("state").is_some() {
             serde_json::from_value::<knowledge::Import>(value).unwrap();
+        } else if value.get("theme").is_some() {
+            serde_json::from_value::<knowledge::ExercisesParams>(value)
+                .unwrap()
+                .validate()
+                .unwrap();
         } else if value.get("path").is_none() {
             serde_json::from_value::<knowledge::StatusParams>(value).unwrap();
         }
         checked += 1;
     }
-    assert!(checked >= 7, "only {checked} examples");
+    assert!(checked >= 14, "only {checked} examples");
+}
+
+#[test]
+fn the_read_capability_is_separate_from_import() {
+    let c: knowledge::Capabilities =
+        serde_json::from_value(json!({"import":true,"contract":"draft-1"})).unwrap();
+    assert!(c.import && !c.read);
+    let c: knowledge::Capabilities =
+        serde_json::from_value(json!({"read":true,"kinds":["sts-epd"],"contract":"draft-1"}))
+            .unwrap();
+    assert!(c.read && !c.import);
+}
+
+#[test]
+fn read_params_may_be_left_out_are_checked_and_skip_what_isnt_set() {
+    let none: knowledge::PuzzlesParams = serde_json::from_value(json!(null)).unwrap();
+    assert_eq!(none, knowledge::PuzzlesParams::default());
+    assert!(none.validate().is_ok());
+    assert_eq!(serde_json::to_value(&none).unwrap(), json!({}));
+    let p: knowledge::PuzzlesParams = serde_json::from_value(
+        json!({"theme":"mateIn1","minRating":1000,"maxRating":1400,"limit":10,"future":1}),
+    )
+    .unwrap();
+    assert_eq!(
+        (p.min_rating, p.max_rating, p.limit),
+        (Some(1000), Some(1400), Some(10))
+    );
+    let request = Request::new::<knowledge::FindPuzzles>(1, &p);
+    assert_eq!(request.method, "knowledge/puzzles");
+    assert_eq!(request.params::<knowledge::FindPuzzles>().unwrap(), p);
+    for bad in [
+        json!({"limit":0}),
+        json!({"limit":101}),
+        json!({"theme":"mate in 1"}),
+        json!({"theme":""}),
+        json!({"minRating":1500,"maxRating":1000}),
+        json!({"after":""}),
+        json!({"after":"x".repeat(knowledge::MAX_CURSOR_BYTES + 1)}),
+    ] {
+        let params: knowledge::PuzzlesParams = serde_json::from_value(bad.clone()).unwrap();
+        assert!(params.validate().is_err(), "{bad}");
+    }
+    let e: knowledge::ExercisesParams = serde_json::from_value(json!(null)).unwrap();
+    assert!(e.validate().is_ok());
+    assert!(
+        knowledge::ExercisesParams {
+            limit: Some(0),
+            ..e
+        }
+        .validate()
+        .is_err()
+    );
+}
+
+#[test]
+fn analyses_params_need_a_fen_of_four_or_six_fields() {
+    let ok = |fen: &str| {
+        knowledge::AnalysesParams {
+            fen: fen.into(),
+            limit: None,
+        }
+        .validate()
+    };
+    assert!(ok("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq -").is_ok());
+    assert!(ok("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1").is_ok());
+    assert!(ok("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq").is_err());
+    assert!(ok("").is_err());
+    assert!(ok(&"x ".repeat(100)).is_err());
+    assert!(
+        knowledge::AnalysesParams {
+            fen: "a b c d".into(),
+            limit: Some(0)
+        }
+        .validate()
+        .is_err()
+    );
+    let missing: Result<knowledge::AnalysesParams, _> = serde_json::from_value(json!({"limit":5}));
+    assert!(missing.is_err());
+}
+
+#[test]
+fn perspectives_and_candidates_are_written_as_the_spec_has_them() {
+    for (p, text) in [
+        (knowledge::Perspective::White, "white"),
+        (knowledge::Perspective::SideToMove, "sideToMove"),
+        (knowledge::Perspective::Unspecified, "unspecified"),
+    ] {
+        assert_eq!(serde_json::to_value(p).unwrap(), json!(text));
+    }
+    let c = knowledge::Candidate {
+        uci: "e2e4".into(),
+        points: 10,
+    };
+    assert_eq!(
+        serde_json::to_value(&c).unwrap(),
+        json!({"move":"e2e4","points":10})
+    );
+    // A mate line has no cp; a centipawn line has no mate.
+    let line: knowledge::Line = serde_json::from_value(json!({"mate":1,"moves":"h5f7"})).unwrap();
+    assert_eq!((line.cp, line.mate), (None, Some(1)));
+    assert_eq!(
+        serde_json::to_value(&line).unwrap(),
+        json!({"mate":1,"moves":"h5f7"})
+    );
 }

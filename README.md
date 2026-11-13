@@ -38,7 +38,8 @@ the PGN's tags, a game read back whole, a game deleted, and games imported in ba
 listed, made, and restored with the restore's own backup to undo it.
 [Draft-1 knowledge](spec/knowledge.md) and `cnp::knowledge` add importing puzzles, evaluated
 positions and test positions from files a client downloaded: started at once, checked against
-their checksum, resumable, and reported as they run. These are
+their checksum, resumable, and reported as they run; and read back, with each answer naming
+its source. These are
 proposals, not released CNP domains.
 
 ## Using it
