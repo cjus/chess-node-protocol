@@ -1,0 +1,29 @@
+{"session":"knowledge-read-refusals","description":"draft-1 knowledge: reads answer with arrays even when nothing is imported, an analysis of a position says which position it is of, and malformed reads are refused (spec/knowledge.md, Reading)","requires":["knowledge.read"]}
+{"send":{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocol":"1.0","client":{"name":"cnp-conformance","version":"1.0"}}}}
+{"expect":{"id":1,"result":{"capabilities":{"knowledge":{"contract":"draft-1","read":true}}}}}
+{"send":{"jsonrpc":"2.0","id":2,"method":"knowledge/puzzles"}}
+{"expect":{"id":2,"result":{"puzzles":"$array","sources":"$array"}}}
+{"send":{"jsonrpc":"2.0","id":3,"method":"knowledge/puzzles","params":{"theme":"noSuchThemeAnywhere","minRating":0,"maxRating":4000,"limit":5}}}
+{"expect":{"id":3,"result":{"puzzles":[],"sources":[]}}}
+{"send":{"jsonrpc":"2.0","id":4,"method":"knowledge/exercises","params":{"theme":"noSuchThemeAnywhere"}}}
+{"expect":{"id":4,"result":{"exercises":[],"sources":[]}}}
+{"comment":"A position with no analysis: the position as the node identifies it (the counters are not part of it), and no analyses."}
+{"send":{"jsonrpc":"2.0","id":5,"method":"knowledge/analyses","params":{"fen":"4k3/8/8/8/8/8/4P3/4K3 w - - 12 34"}}}
+{"expect":{"id":5,"result":{"position":"4k3/8/8/8/8/8/4P3/4K3 w - -","analyses":[],"sources":[]}}}
+{"comment":"Refused: a limit of 0, a theme that isn't one, a ratings range backwards, a cursor the node never gave, an illegal position, and a FEN of the wrong shape."}
+{"send":{"jsonrpc":"2.0","id":6,"method":"knowledge/puzzles","params":{"limit":0}}}
+{"expect":{"id":6,"error":{"code":-32602}}}
+{"send":{"jsonrpc":"2.0","id":7,"method":"knowledge/puzzles","params":{"theme":"mate in 1"}}}
+{"expect":{"id":7,"error":{"code":-32602}}}
+{"send":{"jsonrpc":"2.0","id":8,"method":"knowledge/puzzles","params":{"minRating":2000,"maxRating":1000}}}
+{"expect":{"id":8,"error":{"code":-32602}}}
+{"send":{"jsonrpc":"2.0","id":9,"method":"knowledge/puzzles","params":{"after":"this was never a cursor"}}}
+{"expect":{"id":9,"error":{"code":-32602}}}
+{"send":{"jsonrpc":"2.0","id":10,"method":"knowledge/analyses","params":{"fen":"4k3/8/8/8/8/8/8/8 w - -"}}}
+{"expect":{"id":10,"error":{"code":-32602}}}
+{"send":{"jsonrpc":"2.0","id":11,"method":"knowledge/analyses","params":{"fen":"not a fen"}}}
+{"expect":{"id":11,"error":{"code":-32602}}}
+{"send":{"jsonrpc":"2.0","id":12,"method":"shutdown"}}
+{"expect":{"id":12,"result":null}}
+{"send":{"jsonrpc":"2.0","method":"exit"}}
+{"expectExit":0}

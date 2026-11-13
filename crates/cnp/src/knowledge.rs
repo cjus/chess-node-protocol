@@ -2,10 +2,11 @@
 //! positions from outside sources, which a client hands to the node as downloaded files
 //! (`spec/knowledge.md`). It doesn't change the CNP 1.0 transport.
 //!
-//! Draft 1 is the import half: [`StartImport`] gives the node a file and a [`Manifest`] saying
-//! where it is from, answers at once, and the import runs on; [`ListImports`] reports where
-//! each has got to, and [`CancelImport`] stops one. Reading what was imported is the next
-//! draft.
+//! The import half: [`StartImport`] gives the node a file and a [`Manifest`] saying where it is
+//! from, answers at once, and the import runs on; [`ListImports`] reports where each has got
+//! to, and [`CancelImport`] stops one. The read half: [`FindPuzzles`] by theme and rating,
+//! [`FindAnalyses`] of a position, and [`FindExercises`] by theme, each from complete imports
+//! only and naming its [`Source`]s.
 //!
 //! **The node doesn't download.** The client fetches the file, where it can show the licence,
 //! the size and the progress. The node verifies the file against the manifest's checksum before
@@ -14,6 +15,10 @@
 //!
 //! **Pitfall: a counted record is a committed record.** [`Import`]'s counts are what has been
 //! durably stored, so a client that shows progress shows what survives a crash.
+//!
+//! **Pitfall: apply an answer only to the position it is of.** [`AnalysesResult::position`] is
+//! the position as the node identifies it; a client compares it with its own current position
+//! before it shows the answer.
 //!
 //! **Pitfall: variants aren't versions.** A kind's variants (a puzzle database's releases, the
 //! Strategic Test Suite's differently scored files) are different sources, told apart by
@@ -30,6 +35,16 @@ pub const KIND_LICHESS_PUZZLES: &str = "lichess-puzzles";
 pub const KIND_LICHESS_EVALS: &str = "lichess-evals";
 /// Kind: a Strategic Test Suite EPD file.
 pub const KIND_STS_EPD: &str = "sts-epd";
+/// The most items a read answers with, and the largest `limit`.
+pub const MAX_LIMIT: u32 = 100;
+/// How many items a read answers with when `limit` is left out.
+pub const DEFAULT_LIMIT: u32 = 20;
+/// The longest theme, in bytes.
+pub const MAX_THEME_BYTES: usize = 64;
+/// The longest cursor, in bytes.
+pub const MAX_CURSOR_BYTES: usize = 256;
+/// The longest FEN a read takes, in bytes.
+pub const MAX_FEN_BYTES: usize = 128;
 /// The longest [`ImportParams::path`], in bytes.
 pub const MAX_PATH_BYTES: usize = 4096;
 /// The longest manifest text field, in bytes.
@@ -52,6 +67,9 @@ pub struct Capabilities {
     /// `knowledge/import`, `knowledge/status` and `knowledge/cancel` are available.
     #[serde(default)]
     pub import: bool,
+    /// `knowledge/puzzles`, `knowledge/analyses` and `knowledge/exercises` are available.
+    #[serde(default)]
+    pub read: bool,
     /// The kinds of file the node can import ([`KIND_LICHESS_PUZZLES`] and the like).
     #[serde(default)]
     pub kinds: Vec<String>,
@@ -262,8 +280,10 @@ impl RequestMethod for StartImport {
 #[serde(from = "Option<StatusFields>")]
 pub struct StatusParams {
     /// Only imports of this kind.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub kind: Option<String>,
     /// Only the import with this checksum.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub checksum: Option<String>,
 }
 
@@ -317,4 +337,345 @@ impl RequestMethod for CancelImport {
     const NAME: &'static str = "knowledge/cancel";
     type Params = CancelParams;
     type Result = ImportResult;
+}
+
+/// One imported file, as a read names where its items came from.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Source {
+    /// The file's checksum: what an item's `source` says.
+    pub checksum: String,
+    /// The kind of file.
+    pub kind: String,
+    /// The manifest's `name`.
+    pub name: String,
+    /// The manifest's `release`.
+    pub release: String,
+    /// The manifest's `license`.
+    pub license: String,
+    /// The manifest's `attribution`: shown wherever the source's data is.
+    pub attribution: String,
+}
+
+/// Whether `text` is a theme: 1 to [`MAX_THEME_BYTES`] letters and digits.
+pub fn valid_theme(text: &str) -> bool {
+    (1..=MAX_THEME_BYTES).contains(&text.len()) && text.bytes().all(|b| b.is_ascii_alphanumeric())
+}
+
+/// Checks a read's `limit`, `after` and `theme`, or says what is wrong.
+fn valid_page(
+    limit: Option<u32>,
+    after: &Option<String>,
+    theme: &Option<String>,
+) -> Result<(), String> {
+    if limit.is_some_and(|l| !(1..=MAX_LIMIT).contains(&l)) {
+        return Err(format!("a limit is 1 to {MAX_LIMIT}"));
+    }
+    if after.as_ref().is_some_and(|a| {
+        a.is_empty() || a.len() > MAX_CURSOR_BYTES || a.chars().any(char::is_control)
+    }) {
+        return Err("not a cursor the node gave".into());
+    }
+    if theme.as_ref().is_some_and(|t| !valid_theme(t)) {
+        return Err(format!(
+            "a theme is 1 to {MAX_THEME_BYTES} letters and digits"
+        ));
+    }
+    Ok(())
+}
+
+/// `knowledge/puzzles`' params: all optional, and the params may be left out.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(from = "Option<PuzzlesFields>", rename_all = "camelCase")]
+pub struct PuzzlesParams {
+    /// Only puzzles with this theme.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub theme: Option<String>,
+    /// Only puzzles rated at least this.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub min_rating: Option<u32>,
+    /// Only puzzles rated at most this.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_rating: Option<u32>,
+    /// Where the page starts: a `next` the node gave.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub after: Option<String>,
+    /// How many, 1 to [`MAX_LIMIT`]; [`DEFAULT_LIMIT`] if left out.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub limit: Option<u32>,
+}
+
+/// [`PuzzlesParams`] as they are read, from an object or from nothing.
+#[derive(Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PuzzlesFields {
+    #[serde(default)]
+    theme: Option<String>,
+    #[serde(default)]
+    min_rating: Option<u32>,
+    #[serde(default)]
+    max_rating: Option<u32>,
+    #[serde(default)]
+    after: Option<String>,
+    #[serde(default)]
+    limit: Option<u32>,
+}
+
+impl From<Option<PuzzlesFields>> for PuzzlesParams {
+    fn from(fields: Option<PuzzlesFields>) -> PuzzlesParams {
+        let f = fields.unwrap_or_default();
+        PuzzlesParams {
+            theme: f.theme,
+            min_rating: f.min_rating,
+            max_rating: f.max_rating,
+            after: f.after,
+            limit: f.limit,
+        }
+    }
+}
+
+impl PuzzlesParams {
+    /// Checks the params' shapes, or says what is wrong.
+    pub fn validate(&self) -> Result<(), String> {
+        valid_page(self.limit, &self.after, &self.theme)?;
+        if let (Some(min), Some(max)) = (self.min_rating, self.max_rating)
+            && min > max
+        {
+            return Err("minRating is no more than maxRating".into());
+        }
+        Ok(())
+    }
+}
+
+/// A puzzle.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Puzzle {
+    /// The source's identity for it.
+    pub id: String,
+    /// The checksum of the [`Source`] it came from.
+    pub source: String,
+    /// The position the solver is given: the setup with the first of `moves` played.
+    pub fen: String,
+    /// The position before the opponent's move, as the source gave it.
+    pub setup_fen: String,
+    /// All the moves in UCI as the source wrote them: the first is the opponent's, the second
+    /// begins the solution.
+    pub moves: Vec<String>,
+    /// The source's rating.
+    pub rating: i64,
+    /// The source's rating deviation.
+    pub rating_deviation: i64,
+    /// The source's popularity, 100 (best) to -100.
+    pub popularity: i64,
+    /// How many times it was played.
+    pub plays: i64,
+    /// Its themes, as the source writes them.
+    pub themes: Vec<String>,
+    /// The game it comes from, when the source gave one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub game_url: Option<String>,
+    /// Its opening, when the source gave one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub opening_tags: Option<String>,
+}
+
+/// `knowledge/puzzles`' result.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PuzzlesResult {
+    /// The puzzles, easiest first.
+    pub puzzles: Vec<Puzzle>,
+    /// The sources of these puzzles.
+    pub sources: Vec<Source>,
+    /// Where the next page starts, if more may follow.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub next: Option<String>,
+}
+
+/// Puzzles from complete imports, easiest first, by theme and rating.
+pub enum FindPuzzles {}
+impl RequestMethod for FindPuzzles {
+    const NAME: &'static str = "knowledge/puzzles";
+    type Params = PuzzlesParams;
+    type Result = PuzzlesResult;
+}
+
+/// `knowledge/analyses`' params.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AnalysesParams {
+    /// A position of four to six fields; counters are ignored.
+    pub fen: String,
+    /// How many analyses, 1 to [`MAX_LIMIT`]; [`DEFAULT_LIMIT`] if left out.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub limit: Option<u32>,
+}
+
+impl AnalysesParams {
+    /// Checks the params' shapes (not whether the position is legal), or says what is wrong.
+    pub fn validate(&self) -> Result<(), String> {
+        valid_page(self.limit, &None, &None)?;
+        let fields = self.fen.split_ascii_whitespace().count();
+        if self.fen.len() > MAX_FEN_BYTES || !matches!(fields, 4 | 6) {
+            return Err("a FEN has four or six fields".into());
+        }
+        Ok(())
+    }
+}
+
+/// Whose point of view a score is from.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Perspective {
+    /// White's.
+    White,
+    /// The side to move's.
+    SideToMove,
+    /// The source doesn't say. Neither sign is to be assumed.
+    Unspecified,
+}
+
+/// A principal variation of an analysis: a score and the moves.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Line {
+    /// Centipawns, if it isn't a mate.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cp: Option<i64>,
+    /// Moves to mate, if it is one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mate: Option<i64>,
+    /// The moves in UCI, space-separated, as the source wrote them.
+    pub moves: String,
+}
+
+/// One analysis of a position: a source's search, with its lines.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Analysis {
+    /// The checksum of the [`Source`] it came from.
+    pub source: String,
+    /// The depth the source reached.
+    pub depth: i64,
+    /// Kilonodes the source searched.
+    pub knodes: i64,
+    /// Whose point of view the scores are from.
+    pub perspective: Perspective,
+    /// The lines, best first as the source ordered them.
+    pub lines: Vec<Line>,
+}
+
+/// `knowledge/analyses`' result.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AnalysesResult {
+    /// The position as the node identifies it: placement, side to move, castling rights and an
+    /// en-passant square only if a pawn can use it. A client applies the answer only to a
+    /// position it matches.
+    pub position: String,
+    /// The analyses, deepest first; empty if the sources hold none.
+    pub analyses: Vec<Analysis>,
+    /// The sources of these analyses.
+    pub sources: Vec<Source>,
+}
+
+/// What the sources hold of a position.
+pub enum FindAnalyses {}
+impl RequestMethod for FindAnalyses {
+    const NAME: &'static str = "knowledge/analyses";
+    type Params = AnalysesParams;
+    type Result = AnalysesResult;
+}
+
+/// `knowledge/exercises`' params: all optional, and the params may be left out.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(from = "Option<ExercisesFields>")]
+pub struct ExercisesParams {
+    /// Only exercises of this theme.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub theme: Option<String>,
+    /// Where the page starts: a `next` the node gave.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub after: Option<String>,
+    /// How many, 1 to [`MAX_LIMIT`]; [`DEFAULT_LIMIT`] if left out.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub limit: Option<u32>,
+}
+
+/// [`ExercisesParams`] as they are read, from an object or from nothing.
+#[derive(Default, Deserialize)]
+struct ExercisesFields {
+    #[serde(default)]
+    theme: Option<String>,
+    #[serde(default)]
+    after: Option<String>,
+    #[serde(default)]
+    limit: Option<u32>,
+}
+
+impl From<Option<ExercisesFields>> for ExercisesParams {
+    fn from(fields: Option<ExercisesFields>) -> ExercisesParams {
+        let f = fields.unwrap_or_default();
+        ExercisesParams {
+            theme: f.theme,
+            after: f.after,
+            limit: f.limit,
+        }
+    }
+}
+
+impl ExercisesParams {
+    /// Checks the params' shapes, or says what is wrong.
+    pub fn validate(&self) -> Result<(), String> {
+        valid_page(self.limit, &self.after, &self.theme)
+    }
+}
+
+/// A graded candidate move of an exercise.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Candidate {
+    /// The move in UCI.
+    #[serde(rename = "move")]
+    pub uci: String,
+    /// The points the source's file gave it, on that file's scale.
+    pub points: i64,
+}
+
+/// A strategic exercise.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Exercise {
+    /// The source's identity for it, such as `STS(v1.0) Undermine.001`.
+    pub id: String,
+    /// The checksum of the [`Source`] it came from.
+    pub source: String,
+    /// The suite's own label inside the id.
+    pub suite: String,
+    /// Its theme.
+    pub theme: String,
+    /// The position: placement, side to move, castling and en passant.
+    pub fen: String,
+    /// The best move as the source wrote it (SAN).
+    pub best: String,
+    /// The graded candidates in the source's order; a move may appear twice.
+    pub candidates: Vec<Candidate>,
+    /// The source's scores as it wrote them, when it did.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scores_text: Option<String>,
+}
+
+/// `knowledge/exercises`' result.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExercisesResult {
+    /// The exercises.
+    pub exercises: Vec<Exercise>,
+    /// The sources of these exercises.
+    pub sources: Vec<Source>,
+    /// Where the next page starts, if more may follow.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub next: Option<String>,
+}
+
+/// Strategic exercises from complete imports, by theme.
+pub enum FindExercises {}
+impl RequestMethod for FindExercises {
+    const NAME: &'static str = "knowledge/exercises";
+    type Params = ExercisesParams;
+    type Result = ExercisesResult;
 }

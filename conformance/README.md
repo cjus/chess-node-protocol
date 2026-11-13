@@ -20,7 +20,7 @@ conforms to CNP 1.0 if it passes every session that applies to it.
 | `preferences/` | The draft preferences extension's read (`spec/preferences.md`) | Nodes that keep preferences |
 | `games/` | The draft games extension: a save, its retry, a reused version, get, list, searching, deleting, importing and a game's source (`spec/games.md`) | Nodes that keep games (searching, deleting, importing and sources: those that offer them) |
 | `backups/` | The draft backups extension: the day's automatic backup once, a backup made, restored and the restore undone (`spec/backups.md`) | Nodes that back up what they keep |
-| `knowledge/` | The draft knowledge extension's import: what it refuses, with no import started (`spec/knowledge.md`) | Nodes that import puzzles and positions |
+| `knowledge/` | The draft knowledge extension: an import's refusals, with none started, and reads on an empty library: arrays, the position an analysis is of, and refusals (`spec/knowledge.md`) | Nodes that import puzzles and positions |
 
 The voice sessions check only what doesn't need a model to be ready. A voice node's own tests
 check its speech and transcription.
