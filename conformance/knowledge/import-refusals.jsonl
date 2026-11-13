@@ -1,0 +1,25 @@
+{"session":"knowledge-import-refusals","description":"draft-1 knowledge: no imports to start with, a malformed or relative request is refused, a file that isn't there is refused with no import started, and an import that doesn't exist can't be cancelled (spec/knowledge.md)","requires":["knowledge.import"]}
+{"send":{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocol":"1.0","client":{"name":"cnp-conformance","version":"1.0"}}}}
+{"expect":{"id":1,"result":{"capabilities":{"knowledge":{"contract":"draft-1","import":true,"kinds":"$array"}}}}}
+{"send":{"jsonrpc":"2.0","id":2,"method":"knowledge/status"}}
+{"expect":{"id":2,"result":{"imports":"$array"}}}
+{"comment":"A path that isn't absolute is invalid params."}
+{"send":{"jsonrpc":"2.0","id":3,"method":"knowledge/import","params":{"kind":"lichess-puzzles","path":"Downloads/puzzles.csv.zst","manifest":{"name":"Lichess puzzles","release":"2026-11","url":"https://database.lichess.org/","retrievedAt":"2026-11-13T10:02:11.000Z","checksum":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","license":"CC0-1.0","attribution":"Lichess"}}}}
+{"expect":{"id":3,"error":{"code":-32602}}}
+{"comment":"A checksum that isn't 64 hex digits is invalid params."}
+{"send":{"jsonrpc":"2.0","id":4,"method":"knowledge/import","params":{"kind":"lichess-puzzles","path":"/cnp-conformance/no-such-file.csv.zst","manifest":{"name":"Lichess puzzles","release":"2026-11","url":"https://database.lichess.org/","retrievedAt":"2026-11-13T10:02:11.000Z","checksum":"abc","license":"CC0-1.0","attribution":"Lichess"}}}}
+{"expect":{"id":4,"error":{"code":-32602}}}
+{"comment":"A kind no node lists is invalid params."}
+{"send":{"jsonrpc":"2.0","id":5,"method":"knowledge/import","params":{"kind":"no-such-kind","path":"/cnp-conformance/no-such-file","manifest":{"name":"x","release":"1","url":"https://example.com/","retrievedAt":"2026-11-13T10:02:11.000Z","checksum":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","license":"CC0-1.0","attribution":"x"}}}}
+{"expect":{"id":5,"error":{"code":-32602}}}
+{"comment":"A file that isn't there: refused, and no import is started."}
+{"send":{"jsonrpc":"2.0","id":6,"method":"knowledge/import","params":{"kind":"lichess-puzzles","path":"/cnp-conformance/no-such-file.csv.zst","manifest":{"name":"Lichess puzzles","release":"2026-11","url":"https://database.lichess.org/","retrievedAt":"2026-11-13T10:02:11.000Z","checksum":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","license":"CC0-1.0","attribution":"Lichess"}}}}
+{"expect":{"id":6,"error":{"code":-32027}}}
+{"send":{"jsonrpc":"2.0","id":7,"method":"knowledge/status","params":{"kind":"lichess-puzzles","checksum":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}}}
+{"expect":{"id":7,"error":{"code":-32025}}}
+{"send":{"jsonrpc":"2.0","id":8,"method":"knowledge/cancel","params":{"kind":"lichess-puzzles","checksum":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}}}
+{"expect":{"id":8,"error":{"code":-32025}}}
+{"send":{"jsonrpc":"2.0","id":9,"method":"shutdown"}}
+{"expect":{"id":9,"result":null}}
+{"send":{"jsonrpc":"2.0","method":"exit"}}
+{"expectExit":0}
