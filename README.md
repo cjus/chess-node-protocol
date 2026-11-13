@@ -35,7 +35,10 @@ revision-checked patches and durable retry receipts for review with chessdb.
 that are safe to repeat, a list newest first that can be searched by the players' names and
 the PGN's tags, a game read back whole, a game deleted, and games imported in batches.
 [Draft-1 backups](spec/backups.md) and `cnp::backups` add snapshots of all a node keeps,
-listed, made, and restored with the restore's own backup to undo it. These are
+listed, made, and restored with the restore's own backup to undo it.
+[Draft-1 knowledge](spec/knowledge.md) and `cnp::knowledge` add importing puzzles, evaluated
+positions and test positions from files a client downloaded: started at once, checked against
+their checksum, resumable, and reported as they run. These are
 proposals, not released CNP domains.
 
 ## Using it

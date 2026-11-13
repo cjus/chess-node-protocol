@@ -12,9 +12,10 @@
 //! - [`engine`]: searching positions (`engine/…`);
 //! - [`voice`]: text to speech, speech to text, and listening to speech as it comes
 //!   (`voice/…`);
-//! - [`preferences`], [`games`] and [`backups`]: proposed draft extensions for a node that
-//!   keeps a program's settings and its library of games, and backs them up
-//!   (`preferences/…`, `games/…`, `backups/…`);
+//! - [`preferences`], [`games`], [`backups`] and [`knowledge`]: proposed draft extensions for a
+//!   node that keeps a program's settings and its library of games, backs them up, and imports
+//!   puzzles and positions from outside sources (`preferences/…`, `games/…`, `backups/…`,
+//!   `knowledge/…`);
 //! - [`stdio`]: reading and writing messages, one per line.
 //!
 //! The crate has no runtime and no threads of its own: a program reads messages in a loop of
@@ -47,6 +48,7 @@
 pub mod backups;
 pub mod engine;
 pub mod games;
+pub mod knowledge;
 pub mod lifecycle;
 pub mod message;
 pub mod method;
