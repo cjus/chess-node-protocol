@@ -22,13 +22,14 @@ the checksum the client says it has, so a damaged or swapped download is refused
 
 ```json
 {"capabilities": {"knowledge": {"import": true, "read": true, "puzzleSelection": true,
- "kinds": ["lichess-puzzles", "lichess-evals", "sts-epd"], "contract": "draft-1"}}}
+ "puzzleFilters": true, "kinds": ["lichess-puzzles", "lichess-evals", "sts-epd"], "contract": "draft-1"}}}
 ```
 
 `import` offers `knowledge/import`, `knowledge/status` and `knowledge/cancel`; `read` offers
 `knowledge/puzzles`, `knowledge/analyses` and `knowledge/exercises`; `puzzleSelection` offers
-`knowledge/puzzles`' `order`, `seed` and `quality`, and `knowledge/puzzleFacets`. A missing
-switch is false. `kinds` are the kinds of file the node can import; a request for another kind is
+`knowledge/puzzles`' `order`, `seed` and `quality`, and `knowledge/puzzleFacets`;
+`puzzleFilters` (which needs `puzzleSelection`) offers `knowledge/puzzles`' `opening` and
+`daily`, and the `openings` of `knowledge/puzzleFacets`. A missing switch is false. `kinds` are the kinds of file the node can import; a request for another kind is
 refused. A client sends knowledge requests only to a node whose `contract` is `draft-1`. A node
 without the domain answers them with Method not found (-32601).
 
@@ -241,6 +242,30 @@ other node.
   *reliable* meant. The answer has `quality` only when it was asked for. A client doesn't
   assume one node's thresholds are another's.
 
+#### Opening and daily
+
+A node that offers `puzzleFilters` also takes two more optional fields, and a client sends them
+to no other node.
+
+```json
+{"opening": "Sicilian_Defense", "minRating": 1200, "maxRating": 1599, "order": "random", "limit": 1}
+```
+
+```json
+{"daily": true, "order": "random", "seed": 20406, "limit": 1}
+```
+
+- `opening` is an opening **family** as the source writes it (1–128 letters, digits, underscores
+  and hyphens, as Lichess's `Sicilian_Defense`). The family is the first of a puzzle's opening
+  tags, so a puzzle of `Sicilian_Defense Sicilian_Defense_Najdorf_Variation` is of
+  `Sicilian_Defense`, and one with no opening tag is of none. Anything else is -32602.
+- `daily` is `true` for only the puzzles that were the source's puzzle of the day (Lichess's:
+  under two thousand of them), and absent or `false` for every puzzle. Lichess gives a date
+  to few puzzles, and the date of *today* is probably not among them, so a client that wants
+  one a day asks for `daily` with a `random` order and the date as the `seed` (the number of
+  days since 1970, say): everyone with the same imports gets the same puzzle that day.
+- They combine with `theme`, the ratings, `quality` and `order` as the other filters do.
+
 ### `knowledge/puzzleFacets`
 
 How many puzzles each theme has in each rating band: what a client needs to offer a choice of
@@ -271,6 +296,10 @@ illustrative counts):
   `total` is every puzzle in the band, and a puzzle with several themes is counted under each
   of them, so the themes' counts add up to more than `total`.
 - A theme with no puzzle in any band is not listed. A band with none has a 0.
+- A node that offers `puzzleFilters` also answers with `openings`, in the same shape as
+  `themes`: `[{"opening": "Italian_Game", "counts": [...]}]`, one count for each band, for
+  each opening family that has a puzzle (a puzzle with no opening tag is in none, so the counts
+  don't add up to `total`). Without `puzzleFilters` the field is absent.
 - Counts are of the puzzles of **complete imports** and are the same as asking
   `knowledge/puzzles` for that theme, band and quality would reach, which a node can keep as it
   imports, not work out at each request. A client doesn't treat a count as current after a new
@@ -353,11 +382,16 @@ exercise names its `source`, and a client never mixes the points of two sources.
 
 ## Not in draft 1
 
-Several themes in one request (and excluding a theme), choosing the puzzles of the day,
-progress notifications in place of polling, reading the records an import rejected, removing
-an import's knowledge, searching puzzles by opening or by a position, and Lumbra's OTB games.
+Several themes in one request (and excluding a theme), progress notifications in place of
+polling, reading the records an import rejected, removing an import's knowledge, searching
+puzzles by a position, and Lumbra's OTB games.
 
 ## Changes
+
+- **draft 1, 2026-11-14**, added to the draft: **puzzle filters** (capability `puzzleFilters`,
+  `knowledge/puzzles`' `opening` and `daily`, and `knowledge/puzzleFacets`' `openings`), so a
+  client can offer puzzles of an opening and a puzzle of the day (cjus/chessgui#575). All
+  optional: a node that doesn't offer it, or a request that doesn't send it, is unchanged.
 
 - **draft 1, 2026-11-14**, added to the draft: **puzzle selection** (capability
   `puzzleSelection`, `knowledge/puzzles`' `order`, `seed` and `quality`, and

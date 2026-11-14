@@ -1,0 +1,22 @@
+{"session":"knowledge-filters","description":"draft-1 knowledge, puzzle filters: an opening and the puzzle of the day filter puzzles, facets list openings, and a malformed opening is refused (spec/knowledge.md, Opening and daily)","requires":["knowledge.puzzleFilters"]}
+{"send":{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocol":"1.0","client":{"name":"cnp-conformance","version":"1.0"}}}}
+{"expect":{"id":1,"result":{"capabilities":{"knowledge":{"contract":"draft-1","read":true,"puzzleSelection":true,"puzzleFilters":true}}}}}
+{"comment":"An opening nobody has and a daily request answer with puzzles of that kind, none or some, and the sources."}
+{"send":{"jsonrpc":"2.0","id":2,"method":"knowledge/puzzles","params":{"opening":"No_Such_Opening_Anywhere","order":"random","limit":5}}}
+{"expect":{"id":2,"result":{"puzzles":[],"sources":[],"seed":"$integer"}}}
+{"send":{"jsonrpc":"2.0","id":3,"method":"knowledge/puzzles","params":{"daily":true,"order":"random","seed":20406,"limit":1}}}
+{"expect":{"id":3,"result":{"puzzles":"$array","sources":"$array","seed":20406}}}
+{"send":{"jsonrpc":"2.0","id":4,"method":"knowledge/puzzles","params":{"daily":false,"limit":1}}}
+{"expect":{"id":4,"result":{"puzzles":"$array","sources":"$array"}}}
+{"comment":"Facets list the openings in the same shape as the themes."}
+{"send":{"jsonrpc":"2.0","id":5,"method":"knowledge/puzzleFacets"}}
+{"expect":{"id":5,"result":{"bands":"$array","total":"$array","themes":"$array","openings":"$array","sources":"$array"}}}
+{"comment":"Refused: an opening that isn't one."}
+{"send":{"jsonrpc":"2.0","id":6,"method":"knowledge/puzzles","params":{"opening":"Sicilian Defense"}}}
+{"expect":{"id":6,"error":{"code":-32602}}}
+{"send":{"jsonrpc":"2.0","id":7,"method":"knowledge/puzzles","params":{"opening":""}}}
+{"expect":{"id":7,"error":{"code":-32602}}}
+{"send":{"jsonrpc":"2.0","id":8,"method":"shutdown"}}
+{"expect":{"id":8,"result":null}}
+{"send":{"jsonrpc":"2.0","method":"exit"}}
+{"expectExit":0}
