@@ -10,7 +10,8 @@ and [backups](backups.md) extensions.
 The knowledge is what the player didn't make: puzzles, evaluated positions and strategic test
 positions from outside sources. The domain has two halves: **a client hands the node a file it
 has downloaded, and the node imports it** (`import`), and **a client asks for what was
-imported** (`read`): puzzles by theme and rating, the analyses of a position, and strategic
+imported** (`read`): puzzles by theme and rating (in order of difficulty or from a random
+point, and how many there are of each theme and rating), the analyses of a position, and strategic
 exercises by theme.
 
 The node doesn't download. The client fetches the file, where it can show the licence, the
@@ -20,13 +21,14 @@ the checksum the client says it has, so a damaged or swapped download is refused
 ## Capability
 
 ```json
-{"capabilities": {"knowledge": {"import": true, "read": true,
+{"capabilities": {"knowledge": {"import": true, "read": true, "puzzleSelection": true,
  "kinds": ["lichess-puzzles", "lichess-evals", "sts-epd"], "contract": "draft-1"}}}
 ```
 
 `import` offers `knowledge/import`, `knowledge/status` and `knowledge/cancel`; `read` offers
-`knowledge/puzzles`, `knowledge/analyses` and `knowledge/exercises`. A missing switch is
-false. `kinds` are the kinds of file the node can import; a request for another kind is
+`knowledge/puzzles`, `knowledge/analyses` and `knowledge/exercises`; `puzzleSelection` offers
+`knowledge/puzzles`' `order`, `seed` and `quality`, and `knowledge/puzzleFacets`. A missing
+switch is false. `kinds` are the kinds of file the node can import; a request for another kind is
 refused. A client sends knowledge requests only to a node whose `contract` is `draft-1`. A node
 without the domain answers them with Method not found (-32601).
 
@@ -187,7 +189,7 @@ kind of request, is -32602. `limit` is 1–100, 20 if left out.
 
 Every field is optional. `theme` is a theme as the source writes it (1–64 letters and digits);
 the ratings are whole numbers, `minRating` no more than `maxRating`. Puzzles come **easiest
-first** (by rating, then by identity). Answers:
+first** (by rating, then by identity), unless `order` says otherwise (below). Answers:
 
 ```json
 {"puzzles": [{"id": "00008", "source": "3f1c0d…9a",
@@ -207,6 +209,72 @@ begins the solution. (Every move of the solution is the only move, but for a mat
 any mate does; that is the source's rule, and the node keeps no chess to check it.)
 `ratingDeviation`, `popularity` and `plays` are the source's. `gameUrl` and `openingTags` are
 there when the source gave them.
+
+#### Order, seed and quality
+
+A node that offers `puzzleSelection` also takes three optional fields; a client sends them to no
+other node.
+
+```json
+{"theme": "fork", "minRating": 1200, "maxRating": 1599, "quality": "reliable",
+ "order": "random", "seed": 7, "limit": 1}
+```
+
+- `order` is `easiest` (the default, as above) or `random`. A random pass starts at a point the
+  `seed` picks in **the node's own storage order** and goes on from there, wrapping round to
+  the start, so a pass reaches every matching puzzle once, however few match. `seed` is a whole
+  number, 0 to 4294967295; the same seed over the same imports starts at the same place, so a
+  session can be repeated. Left out, the node picks one, and **the answer's `seed` says which**.
+  `next` continues the pass, and is absent once every matching puzzle has been given. A
+  `seed` with any other order is -32602.
+- Random is **not a shuffle**. The puzzles of one page are neighbours in the node's storage
+  order, and which puzzle a seed starts at is not even over the matching puzzles when they sit
+  in clusters of that order (a puzzle after a long gap of non-matches is likelier to start a
+  pass). For a file whose order has nothing to do with rating or theme, as Lichess's puzzle file
+  does not, a start is close to even. A client that wants one varied puzzle asks for `limit: 1`
+  with a new seed each time; one that wants a shuffled set of twenty asks for several and
+  shuffles them.
+- `quality` is `reliable` or absent. It leaves out puzzles whose rating the source's own counts
+  don't support. **The node chooses the thresholds** and the answer's `quality` names them
+  (`{"minPlays": 100, "minPopularity": 80, "maxRatingDeviation": 110}`: at least that many
+  plays, at least that popularity, at most that rating deviation), so a client can say what
+  *reliable* meant. The answer has `quality` only when it was asked for. A client doesn't
+  assume one node's thresholds are another's.
+
+### `knowledge/puzzleFacets`
+
+How many puzzles each theme has in each rating band: what a client needs to offer a choice of
+theme and difficulty without finding out by asking that a combination is empty. Needs
+`puzzleSelection`.
+
+```json
+{"quality": "reliable"}
+```
+
+`quality` is as in `knowledge/puzzles`, and the params may be left out. Answers (abridged, with
+illustrative counts):
+
+```json
+{"bands": [{"minRating": 0, "maxRating": 799}, {"minRating": 800, "maxRating": 1199},
+ {"minRating": 1200, "maxRating": 1599}, {"minRating": 1600, "maxRating": 1999},
+ {"minRating": 2000, "maxRating": 2399}, {"minRating": 2400}],
+ "total": [500000, 1700000, 1500000, 1200000, 800000, 300000],
+ "themes": [{"theme": "fork", "counts": [31694, 213387, 158289, 113726, 53232, 15428]}],
+ "sources": [{ ... a source ... }],
+ "quality": {"minPlays": 100, "minPopularity": 80, "maxRatingDeviation": 110}}
+```
+
+- `bands` are **the node's**: a client uses the answer's bands and never its own, since a node
+  may count in others. They are in order from the lowest rating, each starting where the last
+  ended plus one; the last has no `maxRating`.
+- `total` and each theme's `counts` have one count for each band, in the order of `bands`.
+  `total` is every puzzle in the band, and a puzzle with several themes is counted under each
+  of them, so the themes' counts add up to more than `total`.
+- A theme with no puzzle in any band is not listed. A band with none has a 0.
+- Counts are of the puzzles of **complete imports** and are the same as asking
+  `knowledge/puzzles` for that theme, band and quality would reach, which a node can keep as it
+  imports, not work out at each request. A client doesn't treat a count as current after a new
+  import: it asks again.
 
 ### `knowledge/analyses`
 
@@ -276,7 +344,7 @@ exercise names its `source`, and a client never mixes the points of two sources.
 
 | Error | Meaning | Client action |
 | --- | --- | --- |
-| -32602 | Invalid params: an unknown kind, or a malformed path, manifest, checksum, theme, rating, limit, cursor or FEN | Correct the request |
+| -32602 | Invalid params: an unknown kind, or a malformed path, manifest, checksum, theme, rating, limit, cursor, FEN, order or quality, or a seed with any order but random | Correct the request |
 | -32013 | Busy: another import is running | Wait for it, or cancel it |
 | -32022 | Storage or I/O failed | Ask `knowledge/status` for the import's state |
 | -32025 | No import with that identity | List the imports |
@@ -285,5 +353,15 @@ exercise names its `source`, and a client never mixes the points of two sources.
 
 ## Not in draft 1
 
-Progress notifications in place of polling, reading the records an import rejected, removing
+Several themes in one request (and excluding a theme), choosing the puzzles of the day,
+progress notifications in place of polling, reading the records an import rejected, removing
 an import's knowledge, searching puzzles by opening or by a position, and Lumbra's OTB games.
+
+## Changes
+
+- **draft 1, 2026-11-14**, added to the draft: **puzzle selection** (capability
+  `puzzleSelection`, `knowledge/puzzles`' `order`, `seed` and `quality`, and
+  `knowledge/puzzleFacets`), so a client can offer varied puzzles of a theme and rating band
+  that rate reliably, and say beforehand which combinations are empty (cjus/chessgui#575,
+  cjus/chess-node-protocol#29). All optional: a node that doesn't offer it, or a request that
+  doesn't send it, is unchanged.

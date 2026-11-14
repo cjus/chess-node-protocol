@@ -1,0 +1,40 @@
+{"session":"knowledge-selection","description":"draft-1 knowledge, puzzle selection: a random pass names its seed and repeats from it, quality names its thresholds, facets answer with counts by band, and a seed without random order is refused (spec/knowledge.md, Order, seed and quality)","requires":["knowledge.puzzleSelection"]}
+{"send":{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocol":"1.0","client":{"name":"cnp-conformance","version":"1.0"}}}}
+{"expect":{"id":1,"result":{"capabilities":{"knowledge":{"contract":"draft-1","read":true,"puzzleSelection":true}}}}}
+{"comment":"A random pass with no seed: the node picks one and says it. Asking again with that seed starts the same pass."}
+{"send":{"jsonrpc":"2.0","id":2,"method":"knowledge/puzzles","params":{"theme":"noSuchThemeAnywhere","order":"random","limit":5}}}
+{"expect":{"id":2,"result":{"puzzles":[],"sources":[],"seed":"$bind:seed"}}}
+{"send":{"jsonrpc":"2.0","id":3,"method":"knowledge/puzzles","params":{"theme":"noSuchThemeAnywhere","order":"random","seed":"$ref:seed","limit":5}}}
+{"expect":{"id":3,"result":{"puzzles":[],"sources":[],"seed":"$ref:seed"}}}
+{"comment":"A seed the client chose is the seed the answer names, at both ends of its range."}
+{"send":{"jsonrpc":"2.0","id":4,"method":"knowledge/puzzles","params":{"order":"random","seed":0,"limit":1}}}
+{"expect":{"id":4,"result":{"puzzles":"$array","sources":"$array","seed":0}}}
+{"send":{"jsonrpc":"2.0","id":5,"method":"knowledge/puzzles","params":{"order":"random","seed":4294967295,"limit":1}}}
+{"expect":{"id":5,"result":{"puzzles":"$array","sources":"$array","seed":4294967295}}}
+{"comment":"Quality names the thresholds it used; a plain request names none."}
+{"send":{"jsonrpc":"2.0","id":6,"method":"knowledge/puzzles","params":{"theme":"noSuchThemeAnywhere","quality":"reliable"}}}
+{"expect":{"id":6,"result":{"puzzles":[],"sources":[],"quality":{"minPlays":"$integer","minPopularity":"$integer","maxRatingDeviation":"$integer"},"seed":"$absent"}}}
+{"send":{"jsonrpc":"2.0","id":7,"method":"knowledge/puzzles","params":{"theme":"noSuchThemeAnywhere"}}}
+{"expect":{"id":7,"result":{"puzzles":[],"sources":[],"quality":"$absent","seed":"$absent"}}}
+{"comment":"Facets: the node's bands, the total in each, and a count in each for every theme listed. The params may be left out. A theme nobody has is not listed."}
+{"send":{"jsonrpc":"2.0","id":8,"method":"knowledge/puzzleFacets"}}
+{"expect":{"id":8,"result":{"bands":"$array","total":"$array","themes":"$array","sources":"$array","quality":"$absent"}}}
+{"send":{"jsonrpc":"2.0","id":9,"method":"knowledge/puzzleFacets","params":{"quality":"reliable"}}}
+{"expect":{"id":9,"result":{"bands":"$array","total":"$array","themes":"$array","sources":"$array","quality":{"minPlays":"$integer","minPopularity":"$integer","maxRatingDeviation":"$integer"}}}}
+{"comment":"Refused: a seed with the default order or with easiest, an order or a quality that isn't one, a seed out of range, and facets for a quality that isn't one."}
+{"send":{"jsonrpc":"2.0","id":10,"method":"knowledge/puzzles","params":{"seed":3}}}
+{"expect":{"id":10,"error":{"code":-32602}}}
+{"send":{"jsonrpc":"2.0","id":11,"method":"knowledge/puzzles","params":{"order":"easiest","seed":3}}}
+{"expect":{"id":11,"error":{"code":-32602}}}
+{"send":{"jsonrpc":"2.0","id":12,"method":"knowledge/puzzles","params":{"order":"shuffled"}}}
+{"expect":{"id":12,"error":{"code":-32602}}}
+{"send":{"jsonrpc":"2.0","id":13,"method":"knowledge/puzzles","params":{"quality":"best"}}}
+{"expect":{"id":13,"error":{"code":-32602}}}
+{"send":{"jsonrpc":"2.0","id":14,"method":"knowledge/puzzles","params":{"order":"random","seed":4294967296}}}
+{"expect":{"id":14,"error":{"code":-32602}}}
+{"send":{"jsonrpc":"2.0","id":15,"method":"knowledge/puzzleFacets","params":{"quality":"best"}}}
+{"expect":{"id":15,"error":{"code":-32602}}}
+{"send":{"jsonrpc":"2.0","id":16,"method":"shutdown"}}
+{"expect":{"id":16,"result":null}}
+{"send":{"jsonrpc":"2.0","method":"exit"}}
+{"expectExit":0}

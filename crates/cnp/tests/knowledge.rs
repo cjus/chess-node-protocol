@@ -196,6 +196,19 @@ fn the_specs_json_examples_are_valid() {
                 .unwrap()
                 .validate()
                 .unwrap();
+        } else if value.get("bands").is_some() {
+            let r: knowledge::FacetsResult = serde_json::from_value(value).unwrap();
+            // One count for each band, for the total and for every theme.
+            assert_eq!(r.total.len(), r.bands.len());
+            assert!(r.themes.iter().all(|t| t.counts.len() == r.bands.len()));
+            assert_eq!(r.bands.last().unwrap().max_rating, None);
+            assert!(
+                r.bands
+                    .windows(2)
+                    .all(|w| w[0].max_rating == Some(w[1].min_rating - 1))
+            );
+        } else if value.get("quality").is_some() {
+            serde_json::from_value::<knowledge::FacetsParams>(value).unwrap();
         } else if value.get("fen").is_some() {
             serde_json::from_value::<knowledge::AnalysesParams>(value)
                 .unwrap()
@@ -328,5 +341,123 @@ fn perspectives_and_candidates_are_written_as_the_spec_has_them() {
     assert_eq!(
         serde_json::to_value(&line).unwrap(),
         json!({"mate":1,"moves":"h5f7"})
+    );
+}
+
+#[test]
+fn the_selection_capability_is_its_own_switch_and_older_nodes_lack_it() {
+    let c: knowledge::Capabilities =
+        serde_json::from_value(json!({"read":true,"contract":"draft-1"})).unwrap();
+    assert!(c.read && !c.puzzle_selection);
+    let c: knowledge::Capabilities =
+        serde_json::from_value(json!({"read":true,"puzzleSelection":true,"contract":"draft-1"}))
+            .unwrap();
+    assert!(c.puzzle_selection);
+    assert_eq!(
+        serde_json::to_value(&c).unwrap()["puzzleSelection"],
+        json!(true)
+    );
+}
+
+#[test]
+fn order_seed_and_quality_are_written_as_the_spec_has_them() {
+    let p: knowledge::PuzzlesParams = serde_json::from_value(
+        json!({"theme":"fork","quality":"reliable","order":"random","seed":7,"limit":1}),
+    )
+    .unwrap();
+    assert_eq!(
+        (p.order, p.seed, p.quality),
+        (
+            Some(knowledge::Order::Random),
+            Some(7),
+            Some(knowledge::Quality::Reliable)
+        )
+    );
+    assert!(p.validate().is_ok());
+    // What was not asked for is not written, so an older node sees nothing new.
+    let plain = knowledge::PuzzlesParams {
+        theme: Some("fork".into()),
+        ..Default::default()
+    };
+    assert_eq!(
+        serde_json::to_value(&plain).unwrap(),
+        json!({"theme":"fork"})
+    );
+    let largest: knowledge::PuzzlesParams =
+        serde_json::from_value(json!({"order":"random","seed":4294967295u32})).unwrap();
+    assert!(largest.validate().is_ok());
+}
+
+#[test]
+fn a_seed_needs_random_order_and_unknown_values_are_refused() {
+    for bad in [json!({"seed":3}), json!({"order":"easiest","seed":3})] {
+        let p: knowledge::PuzzlesParams = serde_json::from_value(bad.clone()).unwrap();
+        assert!(p.validate().unwrap_err().contains("seed"), "{bad}");
+    }
+    // An unknown order or quality is not read at all, which the node answers as invalid params.
+    for bad in [
+        json!({"order":"shuffled"}),
+        json!({"order":"Random"}),
+        json!({"quality":"best"}),
+        json!({"seed":-1,"order":"random"}),
+        json!({"seed":4294967296u64,"order":"random"}),
+    ] {
+        assert!(
+            serde_json::from_value::<knowledge::PuzzlesParams>(bad.clone()).is_err(),
+            "{bad}"
+        );
+    }
+}
+
+#[test]
+fn a_puzzles_answer_names_its_seed_and_thresholds_only_when_there_are_any() {
+    let plain: knowledge::PuzzlesResult =
+        serde_json::from_value(json!({"puzzles":[],"sources":[]})).unwrap();
+    assert_eq!((plain.seed, plain.quality), (None, None));
+    assert_eq!(
+        serde_json::to_value(&plain).unwrap(),
+        json!({"puzzles":[],"sources":[]})
+    );
+    let asked: knowledge::PuzzlesResult = serde_json::from_value(json!({"puzzles":[],"sources":[],
+        "seed":7,"quality":{"minPlays":100,"minPopularity":80,"maxRatingDeviation":110}}))
+    .unwrap();
+    assert_eq!(asked.seed, Some(7));
+    assert_eq!(asked.quality.unwrap().min_plays, 100);
+}
+
+#[test]
+fn facets_params_may_be_left_out_and_the_answer_is_counts_by_band() {
+    let none: knowledge::FacetsParams = serde_json::from_value(json!(null)).unwrap();
+    assert_eq!(none, knowledge::FacetsParams::default());
+    assert_eq!(serde_json::to_value(&none).unwrap(), json!({}));
+    let request = Request::new::<knowledge::FindPuzzleFacets>(
+        1,
+        &knowledge::FacetsParams {
+            quality: Some(knowledge::Quality::Reliable),
+        },
+    );
+    assert_eq!(request.method, "knowledge/puzzleFacets");
+    assert_eq!(
+        request
+            .params::<knowledge::FindPuzzleFacets>()
+            .unwrap()
+            .quality,
+        Some(knowledge::Quality::Reliable)
+    );
+    let answer: knowledge::FacetsResult = serde_json::from_value(json!({
+        "bands":[{"minRating":0,"maxRating":999},{"minRating":1000}],
+        "total":[5,7],
+        "themes":[{"theme":"fork","counts":[2,3]}],
+        "sources":[]}))
+    .unwrap();
+    assert_eq!(answer.bands[1].max_rating, None);
+    assert_eq!(answer.themes[0].counts, [2, 3]);
+    assert_eq!(
+        serde_json::to_value(answer.bands[0]).unwrap(),
+        json!({"minRating":0,"maxRating":999})
+    );
+    assert_eq!(
+        serde_json::to_value(answer.bands[1]).unwrap(),
+        json!({"minRating":1000})
     );
 }
