@@ -75,6 +75,11 @@ pub struct Capabilities {
     /// is available. A client sends none of them to a node that doesn't offer it.
     #[serde(default)]
     pub puzzle_selection: bool,
+    /// `knowledge/puzzles` takes `daily` and `opening`, and `knowledge/puzzleFacets` answers
+    /// with `openings`. Needs [`Capabilities::puzzle_selection`]. A client sends none of them
+    /// to a node that doesn't offer it.
+    #[serde(default)]
+    pub puzzle_filters: bool,
     /// The kinds of file the node can import ([`KIND_LICHESS_PUZZLES`] and the like).
     #[serde(default)]
     pub kinds: Vec<String>,
@@ -367,6 +372,18 @@ pub fn valid_theme(text: &str) -> bool {
     (1..=MAX_THEME_BYTES).contains(&text.len()) && text.bytes().all(|b| b.is_ascii_alphanumeric())
 }
 
+/// The longest an opening is, in bytes.
+pub const MAX_OPENING_BYTES: usize = 128;
+
+/// Whether `text` is an opening as the source writes it: 1 to [`MAX_OPENING_BYTES`] letters,
+/// digits, underscores and hyphens, as Lichess's `Sicilian_Defense`.
+pub fn valid_opening(text: &str) -> bool {
+    (1..=MAX_OPENING_BYTES).contains(&text.len())
+        && text
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+}
+
 /// Checks a read's `limit`, `after` and `theme`, or says what is wrong.
 fn valid_page(
     limit: Option<u32>,
@@ -454,6 +471,14 @@ pub struct PuzzlesParams {
     /// Only puzzles that pass this filter. Needs [`Capabilities::puzzle_selection`].
     #[serde(skip_serializing_if = "Option::is_none")]
     pub quality: Option<Quality>,
+    /// Only puzzles of this opening family, as the source writes it (`Sicilian_Defense`).
+    /// Needs [`Capabilities::puzzle_filters`].
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub opening: Option<String>,
+    /// Only puzzles that were the source's puzzle of the day. Needs
+    /// [`Capabilities::puzzle_filters`].
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub daily: Option<bool>,
 }
 
 /// [`PuzzlesParams`] as they are read, from an object or from nothing.
@@ -476,6 +501,10 @@ struct PuzzlesFields {
     seed: Option<u32>,
     #[serde(default)]
     quality: Option<Quality>,
+    #[serde(default)]
+    opening: Option<String>,
+    #[serde(default)]
+    daily: Option<bool>,
 }
 
 impl From<Option<PuzzlesFields>> for PuzzlesParams {
@@ -490,6 +519,8 @@ impl From<Option<PuzzlesFields>> for PuzzlesParams {
             order: f.order,
             seed: f.seed,
             quality: f.quality,
+            opening: f.opening,
+            daily: f.daily,
         }
     }
 }
@@ -505,6 +536,11 @@ impl PuzzlesParams {
             && min > max
         {
             return Err("minRating is no more than maxRating".into());
+        }
+        if self.opening.as_ref().is_some_and(|o| !valid_opening(o)) {
+            return Err(format!(
+                "an opening is 1 to {MAX_OPENING_BYTES} letters, digits, underscores and hyphens"
+            ));
         }
         Ok(())
     }
@@ -615,6 +651,15 @@ pub struct ThemeCounts {
     pub counts: Vec<u64>,
 }
 
+/// How many puzzles an opening family has in each [`Band`].
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OpeningCounts {
+    /// The opening family, as the source writes it.
+    pub opening: String,
+    /// One count for each band of [`FacetsResult::bands`], in its order.
+    pub counts: Vec<u64>,
+}
+
 /// `knowledge/puzzleFacets`' result.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FacetsResult {
@@ -629,6 +674,10 @@ pub struct FacetsResult {
     /// When a [`Quality`] filter was asked for: the thresholds it used.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub quality: Option<QualityThresholds>,
+    /// Each opening family that has at least one puzzle, with its counts. Only from a node
+    /// that offers [`Capabilities::puzzle_filters`].
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub openings: Vec<OpeningCounts>,
 }
 
 /// How many puzzles each theme has in each rating band, from complete imports.

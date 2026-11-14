@@ -191,7 +191,7 @@ fn the_specs_json_examples_are_valid() {
         } else if value.get("exercises").is_some() {
             let r: knowledge::ExercisesResult = serde_json::from_value(value).unwrap();
             assert_eq!(r.exercises[0].candidates[0].uci, "f4f5");
-        } else if value.get("minRating").is_some() {
+        } else if value.get("minRating").is_some() || value.get("daily").is_some() {
             serde_json::from_value::<knowledge::PuzzlesParams>(value)
                 .unwrap()
                 .validate()
@@ -460,4 +460,66 @@ fn facets_params_may_be_left_out_and_the_answer_is_counts_by_band() {
         serde_json::to_value(answer.bands[1]).unwrap(),
         json!({"minRating":1000})
     );
+}
+
+#[test]
+fn the_filters_capability_is_its_own_switch_and_older_nodes_lack_it() {
+    let c: knowledge::Capabilities =
+        serde_json::from_value(json!({"read":true,"puzzleSelection":true,"contract":"draft-1"}))
+            .unwrap();
+    assert!(c.puzzle_selection && !c.puzzle_filters);
+    let c: knowledge::Capabilities = serde_json::from_value(
+        json!({"read":true,"puzzleSelection":true,"puzzleFilters":true,"contract":"draft-1"}),
+    )
+    .unwrap();
+    assert!(c.puzzle_filters);
+    assert_eq!(
+        serde_json::to_value(&c).unwrap()["puzzleFilters"],
+        json!(true)
+    );
+}
+
+#[test]
+fn an_opening_and_a_daily_filter_are_written_only_when_asked_for() {
+    let p: knowledge::PuzzlesParams = serde_json::from_value(
+        json!({"opening":"Sicilian_Defense","daily":true,"order":"random","limit":1}),
+    )
+    .unwrap();
+    assert_eq!(p.opening.as_deref(), Some("Sicilian_Defense"));
+    assert_eq!(p.daily, Some(true));
+    assert!(p.validate().is_ok());
+    let plain = knowledge::PuzzlesParams {
+        theme: Some("fork".into()),
+        ..Default::default()
+    };
+    assert_eq!(
+        serde_json::to_value(&plain).unwrap(),
+        json!({"theme":"fork"})
+    );
+    for bad in ["", "Sicilian Defense", "Sicilian/Defense", &"a".repeat(129)] {
+        let p = knowledge::PuzzlesParams {
+            opening: Some(bad.to_string()),
+            ..Default::default()
+        };
+        assert!(p.validate().is_err(), "{bad:?}");
+    }
+    assert!(knowledge::valid_opening("Queens_Gambit-Declined"));
+}
+
+#[test]
+fn facets_list_openings_only_when_the_node_has_them() {
+    let none: knowledge::FacetsResult =
+        serde_json::from_value(json!({"bands":[],"total":[],"themes":[],"sources":[]})).unwrap();
+    assert!(none.openings.is_empty());
+    assert_eq!(
+        serde_json::to_value(&none).unwrap(),
+        json!({"bands":[],"total":[],"themes":[],"sources":[]})
+    );
+    let some: knowledge::FacetsResult = serde_json::from_value(json!({
+        "bands":[{"minRating":0}],"total":[9],"themes":[],"sources":[],
+        "openings":[{"opening":"Italian_Game","counts":[4]}]
+    }))
+    .unwrap();
+    assert_eq!(some.openings[0].opening, "Italian_Game");
+    assert_eq!(some.openings[0].counts, [4]);
 }
