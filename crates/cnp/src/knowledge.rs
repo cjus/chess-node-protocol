@@ -4,9 +4,10 @@
 //!
 //! The import half: [`StartImport`] gives the node a file and a [`Manifest`] saying where it is
 //! from, answers at once, and the import runs on; [`ListImports`] reports where each has got
-//! to, and [`CancelImport`] stops one. The read half: [`FindPuzzles`] by theme and rating,
-//! [`FindAnalyses`] of a position, and [`FindExercises`] by theme, each from complete imports
-//! only and naming its [`Source`]s.
+//! to, and [`CancelImport`] stops one. The read half: [`FindPuzzles`] by theme and rating (easiest
+//! first, or from a random point, and only the reliable ones if asked), [`FindPuzzleFacets`]
+//! for how many there are of each theme and rating band, [`FindAnalyses`] of a position, and
+//! [`FindExercises`] by theme, each from complete imports only and naming its [`Source`]s.
 //!
 //! **The node doesn't download.** The client fetches the file, where it can show the licence,
 //! the size and the progress. The node verifies the file against the manifest's checksum before
@@ -70,6 +71,10 @@ pub struct Capabilities {
     /// `knowledge/puzzles`, `knowledge/analyses` and `knowledge/exercises` are available.
     #[serde(default)]
     pub read: bool,
+    /// `knowledge/puzzles` takes `order`, `seed` and `quality`, and `knowledge/puzzleFacets`
+    /// is available. A client sends none of them to a node that doesn't offer it.
+    #[serde(default)]
+    pub puzzle_selection: bool,
     /// The kinds of file the node can import ([`KIND_LICHESS_PUZZLES`] and the like).
     #[serde(default)]
     pub kinds: Vec<String>,
@@ -384,6 +389,41 @@ fn valid_page(
     Ok(())
 }
 
+/// The order `knowledge/puzzles` answers in.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Order {
+    /// By rating, lowest first, then by identity: the same puzzles in the same order every
+    /// time. The default.
+    #[default]
+    Easiest,
+    /// From a point the `seed` picks, in the node's own storage order, wrapping round to the
+    /// start, so every matching puzzle comes once. Not a shuffle: see the spec.
+    Random,
+}
+
+/// A named filter on how far a puzzle's rating can be trusted.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Quality {
+    /// Puzzles the source's own counts support: played enough, liked, and with a settled
+    /// rating. The node chooses the thresholds and says them in [`QualityThresholds`].
+    Reliable,
+}
+
+/// The thresholds a node used for a [`Quality`] filter, so a client can show them and a
+/// puzzle's absence from a result can be explained.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QualityThresholds {
+    /// At least this many plays.
+    pub min_plays: i64,
+    /// At least this popularity.
+    pub min_popularity: i64,
+    /// At most this rating deviation.
+    pub max_rating_deviation: i64,
+}
+
 /// `knowledge/puzzles`' params: all optional, and the params may be left out.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(from = "Option<PuzzlesFields>", rename_all = "camelCase")]
@@ -403,6 +443,17 @@ pub struct PuzzlesParams {
     /// How many, 1 to [`MAX_LIMIT`]; [`DEFAULT_LIMIT`] if left out.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub limit: Option<u32>,
+    /// The order: [`Order::Easiest`] if left out. Needs [`Capabilities::puzzle_selection`]
+    /// for anything else.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub order: Option<Order>,
+    /// Where a [`Order::Random`] pass starts, so a session can be repeated: the node picks one
+    /// and answers with it if this is left out. Only with [`Order::Random`].
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub seed: Option<u32>,
+    /// Only puzzles that pass this filter. Needs [`Capabilities::puzzle_selection`].
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub quality: Option<Quality>,
 }
 
 /// [`PuzzlesParams`] as they are read, from an object or from nothing.
@@ -419,6 +470,12 @@ struct PuzzlesFields {
     after: Option<String>,
     #[serde(default)]
     limit: Option<u32>,
+    #[serde(default)]
+    order: Option<Order>,
+    #[serde(default)]
+    seed: Option<u32>,
+    #[serde(default)]
+    quality: Option<Quality>,
 }
 
 impl From<Option<PuzzlesFields>> for PuzzlesParams {
@@ -430,6 +487,9 @@ impl From<Option<PuzzlesFields>> for PuzzlesParams {
             max_rating: f.max_rating,
             after: f.after,
             limit: f.limit,
+            order: f.order,
+            seed: f.seed,
+            quality: f.quality,
         }
     }
 }
@@ -438,6 +498,9 @@ impl PuzzlesParams {
     /// Checks the params' shapes, or says what is wrong.
     pub fn validate(&self) -> Result<(), String> {
         valid_page(self.limit, &self.after, &self.theme)?;
+        if self.seed.is_some() && self.order != Some(Order::Random) {
+            return Err("a seed is for order random".into());
+        }
         if let (Some(min), Some(max)) = (self.min_rating, self.max_rating)
             && min > max
         {
@@ -483,21 +546,97 @@ pub struct Puzzle {
 /// `knowledge/puzzles`' result.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PuzzlesResult {
-    /// The puzzles, easiest first.
+    /// The puzzles, in the order asked for.
     pub puzzles: Vec<Puzzle>,
     /// The sources of these puzzles.
     pub sources: Vec<Source>,
     /// Where the next page starts, if more may follow.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub next: Option<String>,
+    /// For [`Order::Random`]: the seed the pass started from, the one asked for or the one the
+    /// node picked.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub seed: Option<u32>,
+    /// When a [`Quality`] filter was asked for: the thresholds it used.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub quality: Option<QualityThresholds>,
 }
 
-/// Puzzles from complete imports, easiest first, by theme and rating.
+/// Puzzles from complete imports, by theme and rating, easiest first or from a random point.
 pub enum FindPuzzles {}
 impl RequestMethod for FindPuzzles {
     const NAME: &'static str = "knowledge/puzzles";
     type Params = PuzzlesParams;
     type Result = PuzzlesResult;
+}
+
+/// `knowledge/puzzleFacets`' params: may be left out.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(from = "Option<FacetsFields>", rename_all = "camelCase")]
+pub struct FacetsParams {
+    /// Count only puzzles that pass this filter.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub quality: Option<Quality>,
+}
+
+/// [`FacetsParams`] as they are read, from an object or from nothing.
+#[derive(Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct FacetsFields {
+    #[serde(default)]
+    quality: Option<Quality>,
+}
+
+impl From<Option<FacetsFields>> for FacetsParams {
+    fn from(fields: Option<FacetsFields>) -> FacetsParams {
+        FacetsParams {
+            quality: fields.unwrap_or_default().quality,
+        }
+    }
+}
+
+/// A rating band the node counts puzzles in.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Band {
+    /// The lowest rating in the band.
+    pub min_rating: u32,
+    /// The highest rating in the band; absent for the last, which has none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_rating: Option<u32>,
+}
+
+/// How many puzzles a theme has in each [`Band`].
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ThemeCounts {
+    /// The theme, as the source writes it.
+    pub theme: String,
+    /// One count for each band of [`FacetsResult::bands`], in its order.
+    pub counts: Vec<u64>,
+}
+
+/// `knowledge/puzzleFacets`' result.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FacetsResult {
+    /// The rating bands the counts are in, lowest first. A client uses these, never its own.
+    pub bands: Vec<Band>,
+    /// All puzzles in each band, whatever their themes.
+    pub total: Vec<u64>,
+    /// Each theme that has at least one puzzle, with its counts.
+    pub themes: Vec<ThemeCounts>,
+    /// The sources of the puzzles counted.
+    pub sources: Vec<Source>,
+    /// When a [`Quality`] filter was asked for: the thresholds it used.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub quality: Option<QualityThresholds>,
+}
+
+/// How many puzzles each theme has in each rating band, from complete imports.
+pub enum FindPuzzleFacets {}
+impl RequestMethod for FindPuzzleFacets {
+    const NAME: &'static str = "knowledge/puzzleFacets";
+    type Params = FacetsParams;
+    type Result = FacetsResult;
 }
 
 /// `knowledge/analyses`' params.
