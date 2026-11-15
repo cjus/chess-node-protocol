@@ -188,6 +188,12 @@ fn the_specs_json_examples_are_valid() {
                 r.analyses[0].perspective,
                 knowledge::Perspective::Unspecified
             );
+        } else if value.get("top").is_some() {
+            let r: knowledge::ExplorerResult = serde_json::from_value(value).unwrap();
+            assert_eq!(r.games, r.white_wins + r.draws + r.black_wins);
+            assert_eq!(r.moves[0].uci, "c7c5");
+            assert!(r.moves[0].games >= r.moves[1].games, "most played first");
+            assert_eq!(r.top[0].id, "lichess:AbCdEf12");
         } else if value.get("exercises").is_some() {
             let r: knowledge::ExercisesResult = serde_json::from_value(value).unwrap();
             assert_eq!(r.exercises[0].candidates[0].uci, "f4f5");
@@ -237,7 +243,7 @@ fn the_specs_json_examples_are_valid() {
         }
         checked += 1;
     }
-    assert!(checked >= 14, "only {checked} examples");
+    assert!(checked >= 16, "only {checked} examples");
 }
 
 #[test]
@@ -522,4 +528,79 @@ fn facets_list_openings_only_when_the_node_has_them() {
     .unwrap();
     assert_eq!(some.openings[0].opening, "Italian_Game");
     assert_eq!(some.openings[0].counts, [4]);
+}
+
+#[test]
+fn the_explorer_capability_is_its_own_switch_and_older_nodes_lack_it() {
+    let older: knowledge::Capabilities =
+        serde_json::from_value(json!({"read":true,"contract":"draft-1"})).unwrap();
+    assert!(older.read && !older.explorer);
+    let newer: knowledge::Capabilities =
+        serde_json::from_value(json!({"read":true,"explorer":true,"contract":"draft-1"})).unwrap();
+    assert!(newer.explorer);
+    assert_eq!(
+        serde_json::to_value(&newer).unwrap()["explorer"],
+        json!(true)
+    );
+}
+
+#[test]
+fn explorer_params_need_a_fen_of_four_or_six_fields() {
+    use cnp::RequestMethod;
+    assert_eq!(knowledge::FindExplorer::NAME, "knowledge/explorer");
+    let ok = |fen: &str| knowledge::ExplorerParams { fen: fen.into() }.validate();
+    assert!(ok("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq -").is_ok());
+    assert!(ok("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1").is_ok());
+    assert!(ok("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq").is_err());
+    assert!(ok("").is_err());
+    assert!(ok(&"x ".repeat(100)).is_err());
+    let missing: Result<knowledge::ExplorerParams, _> = serde_json::from_value(json!({}));
+    assert!(missing.is_err());
+}
+
+#[test]
+fn an_explorers_answer_is_written_as_the_spec_has_it() {
+    let game = knowledge::ExplorerGame {
+        id: "lichess:AbCdEf12".into(),
+        white: Some("Alice".into()),
+        black: None,
+        white_elo: 2688,
+        black_elo: 2564,
+        result: "1-0".into(),
+        date: None,
+        uci: "c7c5".into(),
+    };
+    let written = serde_json::to_value(&game).unwrap();
+    assert_eq!(
+        written,
+        json!({"id":"lichess:AbCdEf12","white":"Alice","whiteElo":2688,"blackElo":2564,
+               "result":"1-0","uci":"c7c5"}),
+        "a name or a date the source didn't give is left out"
+    );
+    assert_eq!(
+        serde_json::from_value::<knowledge::ExplorerGame>(written).unwrap(),
+        game
+    );
+
+    let mv = knowledge::ExplorerMove {
+        uci: "c7c5".into(),
+        games: 3,
+        white_wins: 1,
+        draws: 1,
+        black_wins: 1,
+        elo: 1934,
+    };
+    assert_eq!(
+        serde_json::to_value(&mv).unwrap(),
+        json!({"uci":"c7c5","games":3,"whiteWins":1,"draws":1,"blackWins":1,"elo":1934})
+    );
+
+    // Out of book: the position, and nothing played from it.
+    let empty: knowledge::ExplorerResult = serde_json::from_value(json!({
+        "position":"4k3/8/8/8/8/8/4P3/4K3 w - -","games":0,"whiteWins":0,"draws":0,
+        "blackWins":0,"moves":[],"top":[],"sources":[]
+    }))
+    .unwrap();
+    assert_eq!(empty.games, 0);
+    assert!(empty.moves.is_empty() && empty.top.is_empty());
 }

@@ -22,14 +22,16 @@ the checksum the client says it has, so a damaged or swapped download is refused
 
 ```json
 {"capabilities": {"knowledge": {"import": true, "read": true, "puzzleSelection": true,
- "puzzleFilters": true, "kinds": ["lichess-puzzles", "lichess-evals", "sts-epd"], "contract": "draft-1"}}}
+ "puzzleFilters": true, "explorer": true, "kinds": ["lichess-puzzles", "lichess-evals", "sts-epd"],
+ "contract": "draft-1"}}}
 ```
 
 `import` offers `knowledge/import`, `knowledge/status` and `knowledge/cancel`; `read` offers
 `knowledge/puzzles`, `knowledge/analyses` and `knowledge/exercises`; `puzzleSelection` offers
 `knowledge/puzzles`' `order`, `seed` and `quality`, and `knowledge/puzzleFacets`;
 `puzzleFilters` (which needs `puzzleSelection`) offers `knowledge/puzzles`' `opening` and
-`daily`, and the `openings` of `knowledge/puzzleFacets`. A missing switch is false. `kinds` are the kinds of file the node can import; a request for another kind is
+`daily`, and the `openings` of `knowledge/puzzleFacets`; `explorer` (which needs `read`) offers
+`knowledge/explorer`. A missing switch is false. `kinds` are the kinds of file the node can import; a request for another kind is
 refused. A client sends knowledge requests only to a node whose `contract` is `draft-1`. A node
 without the domain answers them with Method not found (-32601).
 
@@ -334,6 +336,57 @@ source gave them, each line with a `cp` (centipawns) or a `mate` score and its m
 score may differ from the same position reached in a game where repetition matters. A position
 with no analysis answers with an empty `analyses`. An illegal position is -32602.
 
+### `knowledge/explorer`
+
+What was played from a position, and how it went: the moves the sources' games chose there,
+each with its games, their results and how strong they were, and the strongest of those games.
+A node that offers `explorer` answers it; a client sends it to no other node.
+
+```json
+{"fen": "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1"}
+```
+
+`fen` is a position of four or six fields, as in `knowledge/analyses`. Answers (abridged to two
+moves and one game, with illustrative counts):
+
+```json
+{"position": "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq -",
+ "games": 61999, "whiteWins": 30113, "draws": 3120, "blackWins": 28766,
+ "moves": [{"uci": "c7c5", "games": 15552, "whiteWins": 7400, "draws": 710, "blackWins": 7442,
+  "elo": 1934},
+  {"uci": "e7e5", "games": 15192, "whiteWins": 7702, "draws": 801, "blackWins": 6689,
+  "elo": 1921}],
+ "top": [{"id": "lichess:AbCdEf12", "white": "Alice", "black": "Bob", "whiteElo": 2688,
+  "blackElo": 2564, "result": "1-0", "date": "2014-07-12", "uci": "c7c5"}],
+ "sources": [{ ... a source ... }]}
+```
+
+- `position` is the position as the node identifies it, as in `knowledge/analyses`, and a
+  client applies the answer only to the position it asked about.
+- `games` is how many of the sources' games reached the position, and `whiteWins`, `draws` and
+  `blackWins` how they ended: the three add up to `games`. **A game counts once**, however
+  often it came back to the position, with the first move it played from it.
+- `moves` are the moves those games played from it, **most played first**, each in UCI with
+  its own `games` and results, and `elo`: the mean, over the games that played it, of the two
+  players' mean rating. Every move played is listed, so the moves' `games` add up to the
+  position's.
+- `top` are the strongest games that reached it, **strongest first** (by the two players' mean
+  rating), as many as the node keeps for a position. Each has an `id`, the game's identity
+  with where it is from before a colon (`lichess:AbCdEf12`); `whiteElo`, `blackElo` and
+  `result` (`1-0`, `0-1` or `1/2-1/2`); `uci`, the move it played **from this position**; and
+  `white`, `black` (the players' names) and `date` (the day it was played, `YYYY-MM-DD`) when
+  the source gave them.
+- `sources` are the sources of the games counted.
+
+**A position the node doesn't hold is out of book, not an error**: it answers with `games` 0
+and empty `moves` and `top`. An explorer holds the positions its builder kept, which is the
+builder's choice and usually leaves out a position too deep in a game or reached by too few of
+them; a client can't tell "never played" from "not kept", and needn't. An illegal position is
+-32602.
+
+An explorer's numbers say what the sources' players chose and how their games ended. They are
+not an evaluation: a move most games lost with may be the best one.
+
 ### `knowledge/exercises`
 
 ```json
@@ -384,9 +437,16 @@ exercise names its `source`, and a client never mixes the points of two sources.
 
 Several themes in one request (and excluding a theme), progress notifications in place of
 polling, reading the records an import rejected, removing an import's knowledge, searching
-puzzles by a position, and Lumbra's OTB games.
+puzzles by a position, Lumbra's OTB games, reading the game a `top` entry of
+`knowledge/explorer` names, and how a node comes to hold an explorer's positions (a kind of file
+to import, or a cache of an online service's answers: cjus/chessgui#656).
 
 ## Changes
+
+- **draft 1, 2026-11-14**, added to the draft: **the opening explorer** (capability `explorer`,
+  `knowledge/explorer`): the moves played from a position with their games, results and mean
+  rating, and the strongest games that reached it (cjus/chessgui#656). Optional: a node that
+  doesn't offer it is unchanged. How a node comes to hold the positions is not in the draft yet.
 
 - **draft 1, 2026-11-14**, added to the draft: **puzzle filters** (capability `puzzleFilters`,
   `knowledge/puzzles`' `opening` and `daily`, and `knowledge/puzzleFacets`' `openings`), so a

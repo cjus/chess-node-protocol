@@ -1,0 +1,20 @@
+{"session":"knowledge-explorer","description":"draft-1 knowledge: an opening explorer says which position its answer is of and how its games ended, answers a position it doesn't hold with no games and no error, and refuses a malformed one (spec/knowledge.md, knowledge/explorer)","requires":["knowledge.explorer"]}
+{"send":{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocol":"1.0","client":{"name":"cnp-conformance","version":"1.0"}}}}
+{"expect":{"id":1,"result":{"capabilities":{"knowledge":{"contract":"draft-1","read":true,"explorer":true}}}}}
+{"comment":"The starting position: the position as the node identifies it (the counters are not part of it), and the answer's fields, whatever the node holds."}
+{"send":{"jsonrpc":"2.0","id":2,"method":"knowledge/explorer","params":{"fen":"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"}}}
+{"expect":{"id":2,"result":{"position":"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq -","games":"$integer","whiteWins":"$integer","draws":"$integer","blackWins":"$integer","moves":"$array","top":"$array","sources":"$array"}}}
+{"comment":"A position no opening reaches is out of book: no games, no moves, no strongest games, and no error."}
+{"send":{"jsonrpc":"2.0","id":3,"method":"knowledge/explorer","params":{"fen":"4k3/8/8/8/8/8/4P3/4K3 w - - 12 34"}}}
+{"expect":{"id":3,"result":{"position":"4k3/8/8/8/8/8/4P3/4K3 w - -","games":0,"whiteWins":0,"draws":0,"blackWins":0,"moves":[],"top":[]}}}
+{"comment":"Refused: an illegal position, a FEN of the wrong shape, and no FEN."}
+{"send":{"jsonrpc":"2.0","id":4,"method":"knowledge/explorer","params":{"fen":"4k3/8/8/8/8/8/8/8 w - -"}}}
+{"expect":{"id":4,"error":{"code":-32602}}}
+{"send":{"jsonrpc":"2.0","id":5,"method":"knowledge/explorer","params":{"fen":"not a fen"}}}
+{"expect":{"id":5,"error":{"code":-32602}}}
+{"send":{"jsonrpc":"2.0","id":6,"method":"knowledge/explorer","params":{}}}
+{"expect":{"id":6,"error":{"code":-32602}}}
+{"send":{"jsonrpc":"2.0","id":7,"method":"shutdown"}}
+{"expect":{"id":7,"result":null}}
+{"send":{"jsonrpc":"2.0","method":"exit"}}
+{"expectExit":0}
