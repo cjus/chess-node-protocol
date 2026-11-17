@@ -1,0 +1,15 @@
+{"session":"knowledge-space","description":"draft-1 knowledge space: usage answers the knowledge's bytes, and a removal of an import there is no record of, or with a malformed identity, is refused (spec/knowledge.md, Space)","requires":["knowledge.space"]}
+{"send":{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocol":"1.0","client":{"name":"cnp-conformance","version":"1.0"}}}}
+{"expect":{"id":1,"result":{"capabilities":{"knowledge":{"contract":"draft-1","space":true}}}}}
+{"send":{"jsonrpc":"2.0","id":2,"method":"knowledge/usage"}}
+{"expect":{"id":2,"result":{"bytes":"$integer"}}}
+{"comment":"An import there is no record of can't be removed."}
+{"send":{"jsonrpc":"2.0","id":3,"method":"knowledge/remove","params":{"kind":"lichess-puzzles","checksum":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}}}
+{"expect":{"id":3,"error":{"code":-32025}}}
+{"comment":"A removal without its checksum is invalid params."}
+{"send":{"jsonrpc":"2.0","id":4,"method":"knowledge/remove","params":{"kind":"lichess-puzzles"}}}
+{"expect":{"id":4,"error":{"code":-32602}}}
+{"send":{"jsonrpc":"2.0","id":5,"method":"shutdown"}}
+{"expect":{"id":5,"result":null}}
+{"send":{"jsonrpc":"2.0","method":"exit"}}
+{"expectExit":0}
