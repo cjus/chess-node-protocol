@@ -342,7 +342,9 @@ illustrative counts):
 - A node that offers `puzzleFilters` also answers with `openings`, in the same shape as
   `themes`: `[{"opening": "Italian_Game", "counts": [...]}]`, one count for each band, for
   each opening family that has a puzzle (a puzzle with no opening tag is in none, so the counts
-  don't add up to `total`). Without `puzzleFilters` the field is absent.
+  don't add up to `total`). The field goes with the capability, not the count: a node with
+  `puzzleFilters` and no puzzles answers `"openings": []`. Without `puzzleFilters` the field is
+  absent.
 - Counts are of the puzzles of **complete imports** and are the same as asking
   `knowledge/puzzles` for that theme, band and quality would reach, which a node can keep as it
   imports, not work out at each request. A client doesn't treat a count as current after a new
@@ -430,6 +432,11 @@ polling, reading the records an import rejected, removing part of an import's kn
 searching puzzles by a position, and Lumbra's OTB games.
 
 ## Changes
+
+- **draft 1, 2026-11-16**, clarified: a node that offers `puzzleFilters` answers
+  `knowledge/puzzleFacets`' `openings` even when it is empty, as the conformance session
+  already expected; `cnp`'s `FacetsResult::openings` is now an `Option`, so a node built on it
+  can say so. The wire is unchanged for every client.
 
 - **draft 1, 2026-11-17**, added to the draft: **space** (capability `space`,
   `knowledge/usage` and `knowledge/remove`), so a client that downloads puzzles a part at a

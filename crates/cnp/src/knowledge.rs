@@ -727,10 +727,15 @@ pub struct FacetsResult {
     /// When a [`Quality`] filter was asked for: the thresholds it used.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub quality: Option<QualityThresholds>,
-    /// Each opening family that has at least one puzzle, with its counts. Only from a node
-    /// that offers [`Capabilities::puzzle_filters`].
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub openings: Vec<OpeningCounts>,
+    /// Each opening family that has at least one puzzle, with its counts. `Some` from a node
+    /// that offers [`Capabilities::puzzle_filters`], and `None` (the field absent) from one
+    /// that doesn't.
+    ///
+    /// Pitfall: an `Option`, not a `Vec` left out when empty, because the spec ties the field
+    /// to the capability, not to the count: a node with the capability and no puzzles answers
+    /// `"openings": []`, and a client tells "no openings yet" from "this node counts none".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub openings: Option<Vec<OpeningCounts>>,
 }
 
 /// How many puzzles each theme has in each rating band, from complete imports.
