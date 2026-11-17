@@ -175,6 +175,10 @@ fn the_specs_json_examples_are_valid() {
                 .unwrap()
                 .validate()
                 .unwrap();
+        } else if value.get("removed").is_some() {
+            serde_json::from_value::<knowledge::RemoveResult>(value).unwrap();
+        } else if value.get("bytes").is_some() {
+            serde_json::from_value::<knowledge::UsageResult>(value).unwrap();
         } else if value.get("import").is_some() {
             serde_json::from_value::<knowledge::ImportResult>(value).unwrap();
         } else if value.get("imports").is_some() {
@@ -522,4 +526,54 @@ fn facets_list_openings_only_when_the_node_has_them() {
     .unwrap();
     assert_eq!(some.openings[0].opening, "Italian_Game");
     assert_eq!(some.openings[0].counts, [4]);
+}
+
+#[test]
+fn the_space_capability_is_its_own_switch_and_older_nodes_lack_it() {
+    let offered: knowledge::Capabilities =
+        serde_json::from_value(json!({"import":true,"space":true,"contract":"draft-1"})).unwrap();
+    assert!(offered.space);
+    let older: knowledge::Capabilities =
+        serde_json::from_value(json!({"import":true,"contract":"draft-1"})).unwrap();
+    assert!(!older.space);
+    let written = serde_json::to_value(knowledge::Capabilities::default()).unwrap();
+    assert_eq!(written["space"], json!(false));
+}
+
+#[test]
+fn usage_takes_no_params_and_answers_bytes() {
+    let usage = Request::new::<knowledge::KnowledgeUsage>(4, &cnp::NoParams);
+    assert_eq!(usage.method, "knowledge/usage");
+    let answer: knowledge::UsageResult =
+        serde_json::from_value(json!({"bytes": 3_279_056_896_u64})).unwrap();
+    assert_eq!(answer.bytes, 3_279_056_896, "more than 32 bits");
+    assert!(serde_json::from_value::<knowledge::UsageResult>(json!({"bytes": -1})).is_err());
+}
+
+#[test]
+fn a_removal_names_an_identity_and_answers_the_import_it_removed() {
+    let remove = Request::new::<knowledge::RemoveImport>(
+        5,
+        &knowledge::RemoveParams {
+            kind: "lichess-puzzles".into(),
+            checksum: "a".repeat(64),
+        },
+    );
+    assert_eq!(remove.method, "knowledge/remove");
+    assert_eq!(
+        serde_json::to_value(&remove.params).unwrap(),
+        json!({"kind":"lichess-puzzles","checksum":"a".repeat(64)})
+    );
+    let missing: Result<knowledge::RemoveParams, _> =
+        serde_json::from_value(json!({"kind":"lichess-puzzles"}));
+    assert!(missing.is_err());
+    let answer: knowledge::RemoveResult = serde_json::from_value(json!({
+        "removed": {"kind":"lichess-puzzles","checksum":"a".repeat(64),"name":"Lichess puzzles",
+            "release":"2026-11-01","state":"complete","read":6193530,"accepted":6193530,
+            "rejected":0,"duplicate":0,"startedAt":"2026-11-14T10:05:00.000Z",
+            "finishedAt":"2026-11-14T10:55:00.000Z"},
+        "bytes": 49_098_752}))
+    .unwrap();
+    assert_eq!(answer.removed.accepted, 6_193_530);
+    assert_eq!(answer.bytes, 49_098_752);
 }
