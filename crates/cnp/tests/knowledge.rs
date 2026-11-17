@@ -514,7 +514,7 @@ fn an_opening_and_a_daily_filter_are_written_only_when_asked_for() {
 fn facets_list_openings_only_when_the_node_has_them() {
     let none: knowledge::FacetsResult =
         serde_json::from_value(json!({"bands":[],"total":[],"themes":[],"sources":[]})).unwrap();
-    assert!(none.openings.is_empty());
+    assert_eq!(none.openings, None);
     assert_eq!(
         serde_json::to_value(&none).unwrap(),
         json!({"bands":[],"total":[],"themes":[],"sources":[]})
@@ -524,8 +524,23 @@ fn facets_list_openings_only_when_the_node_has_them() {
         "openings":[{"opening":"Italian_Game","counts":[4]}]
     }))
     .unwrap();
-    assert_eq!(some.openings[0].opening, "Italian_Game");
-    assert_eq!(some.openings[0].counts, [4]);
+    let openings = some.openings.expect("openings");
+    assert_eq!(openings[0].opening, "Italian_Game");
+    assert_eq!(openings[0].counts, [4]);
+}
+
+#[test]
+fn facets_of_a_node_with_filters_and_no_puzzles_still_answer_openings() {
+    // spec/knowledge.md, `knowledge/puzzleFacets`: the field goes with `puzzleFilters`, not
+    // with the count, and conformance/knowledge/filters.jsonl expects it on an empty library.
+    let empty = knowledge::FacetsResult {
+        openings: Some(Vec::new()),
+        ..Default::default()
+    };
+    let wire = serde_json::to_value(&empty).unwrap();
+    assert_eq!(wire["openings"], json!([]));
+    let back: knowledge::FacetsResult = serde_json::from_value(wire).unwrap();
+    assert_eq!(back.openings, Some(Vec::new()));
 }
 
 #[test]
