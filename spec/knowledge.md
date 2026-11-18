@@ -396,6 +396,7 @@ moves and one game, with illustrative counts):
 
 ```json
 {"position": "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq -",
+ "eco": "B00", "opening": "King's Pawn Game",
  "games": 61999, "whiteWins": 30113, "draws": 3120, "blackWins": 28766,
  "moves": [{"uci": "c7c5", "games": 15552, "whiteWins": 7400, "draws": 710, "blackWins": 7442,
   "elo": 1934},
@@ -408,6 +409,13 @@ moves and one game, with illustrative counts):
 
 - `position` is the position as the node identifies it, as in `knowledge/analyses`, and a
   client applies the answer only to the position it asked about.
+- `eco` and `opening` are the position's name, when it has one: its ECO code (a letter `A` to
+  `E` and two digits) and the opening's name, as a list of named lines such as Lichess's
+  `chess-openings` gives them, `Family: Variation, Subvariation`. A position is named when a
+  named line **ends** there, whatever move order reached it, so a transposition is named too.
+  Most positions have no name of their own, and both are then absent: a client that wants a
+  name for every position shows the last named position along the moves that led to it, as
+  only it knows them. The two come together or not at all.
 - `games` is how many of the sources' games reached the position, and `whiteWins`, `draws` and
   `blackWins` how they ended: the three add up to `games`. **A game counts once**, however
   often it came back to the position, with the first move it played from it.
@@ -488,6 +496,13 @@ to import, or a cache of an online service's answers: cjus/chessdb#48).
 
 ## Changes
 
+- **draft 1, 2026-11-14**, added to the draft: **the opening explorer** (capability `explorer`,
+  `knowledge/explorer`): the moves played from a position with their games, results and mean
+  rating, and the strongest games that reached it (cjus/chessgui#656); and, 2026-11-17, the
+  position's name, `eco` and `opening`, when it has one (cjus/chessdb#73). Optional: a node
+  that doesn't offer it is unchanged. How a node comes to hold the positions is not in the
+  draft yet.
+
 - **draft 1, 2026-11-16**, clarified: a node that offers `puzzleFilters` answers
   `knowledge/puzzleFacets`' `openings` even when it is empty, as the conformance session
   already expected; `cnp`'s `FacetsResult::openings` is now an `Option`, so a node built on it
@@ -498,11 +513,6 @@ to import, or a cache of an online service's answers: cjus/chessdb#48).
   time can keep the knowledge within a disk limit the player sets, and remove a whole database
   a smaller set replaces (cjus/chessdb#48). All optional: a node that doesn't offer it, or a
   client that doesn't send them, is unchanged.
-
-- **draft 1, 2026-11-14**, added to the draft: **the opening explorer** (capability `explorer`,
-  `knowledge/explorer`): the moves played from a position with their games, results and mean
-  rating, and the strongest games that reached it (cjus/chessgui#656). Optional: a node that
-  doesn't offer it is unchanged. How a node comes to hold the positions is not in the draft yet.
 
 - **draft 1, 2026-11-14**, added to the draft: **puzzle filters** (capability `puzzleFilters`,
   `knowledge/puzzles`' `opening` and `daily`, and `knowledge/puzzleFacets`' `openings`), so a

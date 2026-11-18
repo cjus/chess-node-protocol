@@ -902,6 +902,15 @@ pub struct ExplorerResult {
     /// The position as the node identifies it, as in [`AnalysesResult::position`]. A client
     /// applies the answer only to a position it matches.
     pub position: String,
+    /// The position's ECO code, `B00`, when a named line ends there; with
+    /// [`ExplorerResult::opening`] or not at all.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub eco: Option<String>,
+    /// The opening's name, `King's Pawn Game`, when a named line ends at the position; with
+    /// [`ExplorerResult::eco`] or not at all. A position without one is named by the client, if
+    /// it likes, after the last named position along the moves it knows led there.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub opening: Option<String>,
     /// How many games reached the position, each counted once.
     pub games: u64,
     /// Of them, White's wins.

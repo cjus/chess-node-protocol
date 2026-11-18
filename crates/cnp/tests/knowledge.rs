@@ -198,6 +198,8 @@ fn the_specs_json_examples_are_valid() {
             assert_eq!(r.moves[0].uci, "c7c5");
             assert!(r.moves[0].games >= r.moves[1].games, "most played first");
             assert_eq!(r.top[0].id, "lichess:AbCdEf12");
+            assert_eq!(r.eco.as_deref(), Some("B00"));
+            assert_eq!(r.opening.as_deref(), Some("King's Pawn Game"));
         } else if value.get("exercises").is_some() {
             let r: knowledge::ExercisesResult = serde_json::from_value(value).unwrap();
             assert_eq!(r.exercises[0].candidates[0].uci, "f4f5");
@@ -672,4 +674,34 @@ fn an_explorers_answer_is_written_as_the_spec_has_it() {
     .unwrap();
     assert_eq!(empty.games, 0);
     assert!(empty.moves.is_empty() && empty.top.is_empty());
+    assert_eq!(
+        (empty.eco, empty.opening),
+        (None, None),
+        "an older node's answer"
+    );
+}
+
+#[test]
+fn an_explorers_position_is_named_only_when_a_named_line_ends_there() {
+    let named = knowledge::ExplorerResult {
+        position: "rnbqkbnr/pp1ppppp/8/2p5/4P3/8/PPPP1PPP/RNBQKBNR w KQkq -".into(),
+        eco: Some("B20".into()),
+        opening: Some("Sicilian Defense".into()),
+        ..Default::default()
+    };
+    let written = serde_json::to_value(&named).unwrap();
+    assert_eq!(written["eco"], json!("B20"));
+    assert_eq!(written["opening"], json!("Sicilian Defense"));
+    assert_eq!(
+        serde_json::from_value::<knowledge::ExplorerResult>(written).unwrap(),
+        named
+    );
+
+    // A position no named line ends at: no name, and neither attribute is written.
+    let unnamed = knowledge::ExplorerResult {
+        position: "4k3/8/8/8/8/8/4P3/4K3 w - -".into(),
+        ..Default::default()
+    };
+    let written = serde_json::to_value(&unnamed).unwrap();
+    assert!(written.get("eco").is_none() && written.get("opening").is_none());
 }

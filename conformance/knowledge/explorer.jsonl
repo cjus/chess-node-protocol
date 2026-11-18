@@ -4,7 +4,7 @@
 {"comment":"The starting position: the position as the node identifies it (the counters are not part of it), and the answer's fields, whatever the node holds."}
 {"send":{"jsonrpc":"2.0","id":2,"method":"knowledge/explorer","params":{"fen":"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"}}}
 {"expect":{"id":2,"result":{"position":"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq -","games":"$integer","whiteWins":"$integer","draws":"$integer","blackWins":"$integer","moves":"$array","top":"$array","sources":"$array"}}}
-{"comment":"A position no opening reaches is out of book: no games, no moves, no strongest games, and no error."}
+{"comment":"A position no opening reaches is out of book: no games, no moves, no strongest games, and no error. It has no name either: eco and opening, when a node sends them, are a named line's end position's, and this one ends none."}
 {"send":{"jsonrpc":"2.0","id":3,"method":"knowledge/explorer","params":{"fen":"4k3/8/8/8/8/8/4P3/4K3 w - - 12 34"}}}
 {"expect":{"id":3,"result":{"position":"4k3/8/8/8/8/8/4P3/4K3 w - -","games":0,"whiteWins":0,"draws":0,"blackWins":0,"moves":[],"top":[]}}}
 {"comment":"Refused: an illegal position, a FEN of the wrong shape, and no FEN."}
