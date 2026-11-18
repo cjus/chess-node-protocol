@@ -8,7 +8,7 @@
 {"expect":{"id":3,"result":{"puzzles":"$array","sources":"$array","seed":20406}}}
 {"send":{"jsonrpc":"2.0","id":4,"method":"knowledge/puzzles","params":{"daily":false,"limit":1}}}
 {"expect":{"id":4,"result":{"puzzles":"$array","sources":"$array"}}}
-{"comment":"Facets list the openings in the same shape as the themes."}
+{"comment":"Facets list the openings in the same shape as the themes, an empty list when there are none."}
 {"send":{"jsonrpc":"2.0","id":5,"method":"knowledge/puzzleFacets"}}
 {"expect":{"id":5,"result":{"bands":"$array","total":"$array","themes":"$array","openings":"$array","sources":"$array"}}}
 {"comment":"Refused: an opening that isn't one."}

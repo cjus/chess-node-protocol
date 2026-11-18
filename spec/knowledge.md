@@ -22,7 +22,8 @@ the checksum the client says it has, so a damaged or swapped download is refused
 
 ```json
 {"capabilities": {"knowledge": {"import": true, "read": true, "puzzleSelection": true,
- "puzzleFilters": true, "explorer": true, "kinds": ["lichess-puzzles", "lichess-evals", "sts-epd"],
+ "puzzleFilters": true, "space": true, "explorer": true,
+ "kinds": ["lichess-puzzles", "lichess-evals", "sts-epd"],
  "contract": "draft-1"}}}
 ```
 
@@ -30,8 +31,9 @@ the checksum the client says it has, so a damaged or swapped download is refused
 `knowledge/puzzles`, `knowledge/analyses` and `knowledge/exercises`; `puzzleSelection` offers
 `knowledge/puzzles`' `order`, `seed` and `quality`, and `knowledge/puzzleFacets`;
 `puzzleFilters` (which needs `puzzleSelection`) offers `knowledge/puzzles`' `opening` and
-`daily`, and the `openings` of `knowledge/puzzleFacets`; `explorer` (which needs `read`) offers
-`knowledge/explorer`. A missing switch is false. `kinds` are the kinds of file the node can import; a request for another kind is
+`daily`, and the `openings` of `knowledge/puzzleFacets`; `space` offers `knowledge/usage` and
+`knowledge/remove`; `explorer` (which needs `read`) offers `knowledge/explorer`. A missing
+switch is false. `kinds` are the kinds of file the node can import; a request for another kind is
 refused. A client sends knowledge requests only to a node whose `contract` is `draft-1`. A node
 without the domain answers them with Method not found (-32601).
 
@@ -163,6 +165,47 @@ Stops an import at its next batch (a node's batches are short) and answers when 
 with the import, `cancelled`. What it committed stays, and importing the file again resumes it.
 Cancelling an import that isn't running answers with its state unchanged; one the node has no
 record of is -32025.
+
+## Space
+
+A client that downloads knowledge as the player needs it, a part at a time, keeps it within a
+disk limit the player sets: it asks how much the knowledge takes, and removes what it no longer
+wants, such as a whole database a smaller set replaces. The limit is the client's; the node
+only reports and removes.
+
+### `knowledge/usage`
+
+No params. Answers with the bytes the node's knowledge takes on its disk, everything it keeps
+for it included (indexes, journals, space it hasn't given back yet):
+
+```json
+{"bytes": 49098752}
+```
+
+### `knowledge/remove`
+
+```json
+{"kind": "lichess-puzzles", "checksum": "3f1c0d…9a"}
+```
+
+Takes an import's knowledge out, and the import with it. It answers when the knowledge is
+gone and its space given back to the disk, with the import as it was and the bytes the
+knowledge takes now:
+
+```json
+{"removed": { ... an import ... }, "bytes": 49098752}
+```
+
+- **From the request on, the import is gone** to `knowledge/status` and to every read, even
+  before the answer. Removing a large import takes a while (minutes for millions of records
+  on a slow disk); the node answers other requests meanwhile, and a removal its stopping
+  interrupts is finished when it starts again.
+- **Only that import's knowledge goes.** A position another import also has stays, with that
+  import's items. Nothing of the player's is touched: knowledge is never the player's data.
+- An import that is `verifying` or `importing` is Busy (-32013): cancel it first. So is a
+  second removal, or an import, while one runs. An identity the node has no record of is
+  -32025, so removing twice answers -32025 the second time.
+- Importing the same file later imports it afresh.
 
 ## Reading
 
@@ -301,7 +344,9 @@ illustrative counts):
 - A node that offers `puzzleFilters` also answers with `openings`, in the same shape as
   `themes`: `[{"opening": "Italian_Game", "counts": [...]}]`, one count for each band, for
   each opening family that has a puzzle (a puzzle with no opening tag is in none, so the counts
-  don't add up to `total`). Without `puzzleFilters` the field is absent.
+  don't add up to `total`). The field goes with the capability, not the count: a node with
+  `puzzleFilters` and no puzzles answers `"openings": []`. Without `puzzleFilters` the field is
+  absent.
 - Counts are of the puzzles of **complete imports** and are the same as asking
   `knowledge/puzzles` for that theme, band and quality would reach, which a node can keep as it
   imports, not work out at each request. A client doesn't treat a count as current after a new
@@ -427,7 +472,7 @@ exercise names its `source`, and a client never mixes the points of two sources.
 | Error | Meaning | Client action |
 | --- | --- | --- |
 | -32602 | Invalid params: an unknown kind, or a malformed path, manifest, checksum, theme, rating, limit, cursor, FEN, order or quality, or a seed with any order but random | Correct the request |
-| -32013 | Busy: another import is running | Wait for it, or cancel it |
+| -32013 | Busy: an import or a removal is running, or the import to remove is | Wait for it, or cancel the import |
 | -32022 | Storage or I/O failed | Ask `knowledge/status` for the import's state |
 | -32025 | No import with that identity | List the imports |
 | -32027 | The file doesn't exist, isn't a file, or can't be read | Ask the player for the file again |
@@ -436,12 +481,23 @@ exercise names its `source`, and a client never mixes the points of two sources.
 ## Not in draft 1
 
 Several themes in one request (and excluding a theme), progress notifications in place of
-polling, reading the records an import rejected, removing an import's knowledge, searching
-puzzles by a position, Lumbra's OTB games, reading the game a `top` entry of
+polling, reading the records an import rejected, removing part of an import's knowledge,
+searching puzzles by a position, Lumbra's OTB games, reading the game a `top` entry of
 `knowledge/explorer` names, and how a node comes to hold an explorer's positions (a kind of file
-to import, or a cache of an online service's answers: cjus/chessgui#656).
+to import, or a cache of an online service's answers: cjus/chessdb#48).
 
 ## Changes
+
+- **draft 1, 2026-11-16**, clarified: a node that offers `puzzleFilters` answers
+  `knowledge/puzzleFacets`' `openings` even when it is empty, as the conformance session
+  already expected; `cnp`'s `FacetsResult::openings` is now an `Option`, so a node built on it
+  can say so. The wire is unchanged for every client.
+
+- **draft 1, 2026-11-17**, added to the draft: **space** (capability `space`,
+  `knowledge/usage` and `knowledge/remove`), so a client that downloads puzzles a part at a
+  time can keep the knowledge within a disk limit the player sets, and remove a whole database
+  a smaller set replaces (cjus/chessdb#48). All optional: a node that doesn't offer it, or a
+  client that doesn't send them, is unchanged.
 
 - **draft 1, 2026-11-14**, added to the draft: **the opening explorer** (capability `explorer`,
   `knowledge/explorer`): the moves played from a position with their games, results and mean

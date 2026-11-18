@@ -4,7 +4,9 @@
 //!
 //! The import half: [`StartImport`] gives the node a file and a [`Manifest`] saying where it is
 //! from, answers at once, and the import runs on; [`ListImports`] reports where each has got
-//! to, and [`CancelImport`] stops one. The read half: [`FindPuzzles`] by theme and rating (easiest
+//! to, and [`CancelImport`] stops one. [`KnowledgeUsage`] and [`RemoveImport`] keep the
+//! knowledge within a disk limit the client sets: how much the node's knowledge takes, and an
+//! import's knowledge taken out again. The read half: [`FindPuzzles`] by theme and rating (easiest
 //! first, or from a random point, and only the reliable ones if asked), [`FindPuzzleFacets`]
 //! for how many there are of each theme and rating band, [`FindAnalyses`] of a position, and
 //! [`FindExercises`] by theme, each from complete imports only and naming its [`Source`]s.
@@ -24,7 +26,7 @@
 //! **Pitfall: variants aren't versions.** A kind's variants (a puzzle database's releases, the
 //! Strategic Test Suite's differently scored files) are different sources, told apart by
 //! [`Import::checksum`]; a node never converts one's scores to another's scale.
-use crate::RequestMethod;
+use crate::{NoParams, RequestMethod};
 use serde::{Deserialize, Serialize};
 
 /// Review identifier, in [`Capabilities::contract`]. Clients must check it before sending
@@ -80,6 +82,10 @@ pub struct Capabilities {
     /// to a node that doesn't offer it.
     #[serde(default)]
     pub puzzle_filters: bool,
+    /// `knowledge/usage` and `knowledge/remove` are available. A client sends neither to a
+    /// node that doesn't offer it.
+    #[serde(default)]
+    pub space: bool,
     /// `knowledge/explorer` is available. Needs [`Capabilities::read`]. A client sends it to
     /// no node that doesn't offer it.
     #[serde(default)]
@@ -351,6 +357,53 @@ impl RequestMethod for CancelImport {
     const NAME: &'static str = "knowledge/cancel";
     type Params = CancelParams;
     type Result = ImportResult;
+}
+
+/// `knowledge/usage`'s result.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct UsageResult {
+    /// The bytes the node's knowledge takes on its disk, everything it keeps for it included.
+    pub bytes: u64,
+}
+
+/// How much disk the node's knowledge takes, so a client can keep it within a limit.
+pub enum KnowledgeUsage {}
+impl RequestMethod for KnowledgeUsage {
+    const NAME: &'static str = "knowledge/usage";
+    type Params = NoParams;
+    type Result = UsageResult;
+}
+
+/// `knowledge/remove`'s params: the import's identity.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RemoveParams {
+    /// The kind of file.
+    pub kind: String,
+    /// The file's checksum.
+    pub checksum: String,
+}
+
+/// `knowledge/remove`'s result.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RemoveResult {
+    /// The import as it was when the request came, now gone.
+    pub removed: Import,
+    /// [`UsageResult::bytes`] once its space is given back.
+    pub bytes: u64,
+}
+
+/// Takes an import's knowledge out, and the import with it, and answers when it is gone and
+/// its space given back to the disk. From the request on, reads and `knowledge/status` leave
+/// the import out; a removal the node's stopping interrupts is finished when it starts again.
+/// Only that import's knowledge goes: a position another import also has stays, and nothing of
+/// the player's is touched. A running import is Busy (-32013), as is a second removal or an
+/// import while one runs; an identity the node has no record of is [`NOT_FOUND`]. Importing the
+/// same file later imports it afresh.
+pub enum RemoveImport {}
+impl RequestMethod for RemoveImport {
+    const NAME: &'static str = "knowledge/remove";
+    type Params = RemoveParams;
+    type Result = RemoveResult;
 }
 
 /// One imported file, as a read names where its items came from.
@@ -678,10 +731,15 @@ pub struct FacetsResult {
     /// When a [`Quality`] filter was asked for: the thresholds it used.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub quality: Option<QualityThresholds>,
-    /// Each opening family that has at least one puzzle, with its counts. Only from a node
-    /// that offers [`Capabilities::puzzle_filters`].
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub openings: Vec<OpeningCounts>,
+    /// Each opening family that has at least one puzzle, with its counts. `Some` from a node
+    /// that offers [`Capabilities::puzzle_filters`], and `None` (the field absent) from one
+    /// that doesn't.
+    ///
+    /// Pitfall: an `Option`, not a `Vec` left out when empty, because the spec ties the field
+    /// to the capability, not to the count: a node with the capability and no puzzles answers
+    /// `"openings": []`, and a client tells "no openings yet" from "this node counts none".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub openings: Option<Vec<OpeningCounts>>,
 }
 
 /// How many puzzles each theme has in each rating band, from complete imports.
