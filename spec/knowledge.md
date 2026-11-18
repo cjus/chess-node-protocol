@@ -22,8 +22,8 @@ the checksum the client says it has, so a damaged or swapped download is refused
 
 ```json
 {"capabilities": {"knowledge": {"import": true, "read": true, "puzzleSelection": true,
- "puzzleFilters": true, "space": true, "kinds": ["lichess-puzzles", "lichess-evals", "sts-epd"],
- "contract": "draft-1"}}}
+ "puzzleFilters": true, "space": true, "openingNames": true,
+ "kinds": ["lichess-puzzles", "lichess-evals", "sts-epd"], "contract": "draft-1"}}}
 ```
 
 `import` offers `knowledge/import`, `knowledge/status` and `knowledge/cancel`; `read` offers
@@ -31,7 +31,8 @@ the checksum the client says it has, so a damaged or swapped download is refused
 `knowledge/puzzles`' `order`, `seed` and `quality`, and `knowledge/puzzleFacets`;
 `puzzleFilters` (which needs `puzzleSelection`) offers `knowledge/puzzles`' `opening` and
 `daily`, and the `openings` of `knowledge/puzzleFacets`; `space` offers `knowledge/usage` and
-`knowledge/remove`. A missing switch is false. `kinds` are the kinds of file the node can import; a request for another kind is
+`knowledge/remove`; `openingNames` offers `knowledge/openingName`, which needs no import and
+no other switch. A missing switch is false. `kinds` are the kinds of file the node can import; a request for another kind is
 refused. A client sends knowledge requests only to a node whose `contract` is `draft-1`. A node
 without the domain answers them with Method not found (-32601).
 
@@ -399,6 +400,47 @@ order; a move may appear twice with different points, as the published files hav
 on the files' different scales (0 to 10, 1 to 100) are not comparable, which is why every
 exercise names its `source`, and a client never mixes the points of two sources.
 
+## Naming openings
+
+A node that offers `openingNames` holds a list of named openings of its own, such as Lichess's
+[`chess-openings`](https://github.com/lichess-org/chess-openings) (CC0): an ECO code and a name
+for each line, and so for the position each line ends at. Unlike the reads, it answers from
+that list, not from imports, so it answers the same with nothing imported.
+
+### `knowledge/openingName`
+
+```json
+{"fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+ "moves": ["e2e4", "e7e5", "g1f3", "b8c6", "f1b5", "a7a6", "b5a4", "g8f6"]}
+```
+
+`fen` is where the line starts, of four to six fields (the counters, if any, are ignored), such
+as a game's start; `moves` are the line's moves from it in UCI, at most 1,024 (empty names `fen`
+itself). Answers with the name of **the last named position along the line**: the position the
+moves end at if a listed line ends there, or else the one before it, and so on back to `fen`,
+as lichess.org names a game's opening:
+
+```json
+{"position": "r1bqkb1r/1ppp1ppp/p1n2n2/4p3/B3P3/5N2/PPPP1PPP/RNBQK2R w KQkq -",
+ "eco": "C70", "opening": "Ruy Lopez: Morphy Defense", "ply": 6}
+```
+
+`position` is the position the line ends at, as `knowledge/analyses` identifies one. `ply` is
+how many of the moves lead to the named position: here the sixth, `3... a6`, since no listed
+line ends at `4. Ba4` or `4... Nf6`. `eco`, `opening` and `ply` are there together or not at
+all: when no position along the line, `fen` included, is named, the answer has only `position`:
+
+```json
+{"position": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq -"}
+```
+
+A position is matched by its identity, not by the moves that reached it, so a transposition is
+named too: `1. d4 Nf6 2. c4 e6 3. Nc3 d5` reaches D35 Queen's Gambit Declined: Normal Defense,
+listed as `1. d4 d5 2. c4 e6 3. Nc3 Nf6`. **A client applies an answer only to the line it
+asked about**: the name depends on every position along the line, not only where it ends, so
+comparing `position` isn't enough. An illegal position, or a move that isn't legal where it is
+played, is -32602.
+
 ## Pitfalls
 
 - **The path is the client's.** A node reads whatever file its client names, and the client
@@ -418,7 +460,7 @@ exercise names its `source`, and a client never mixes the points of two sources.
 
 | Error | Meaning | Client action |
 | --- | --- | --- |
-| -32602 | Invalid params: an unknown kind, or a malformed path, manifest, checksum, theme, rating, limit, cursor, FEN, order or quality, or a seed with any order but random | Correct the request |
+| -32602 | Invalid params: an unknown kind, or a malformed path, manifest, checksum, theme, rating, limit, cursor, FEN, order or quality, a seed with any order but random, or a line of moves too long or with a move that isn't legal where it is played | Correct the request |
 | -32013 | Busy: an import or a removal is running, or the import to remove is | Wait for it, or cancel the import |
 | -32022 | Storage or I/O failed | Ask `knowledge/status` for the import's state |
 | -32025 | No import with that identity | List the imports |
@@ -432,6 +474,11 @@ polling, reading the records an import rejected, removing part of an import's kn
 searching puzzles by a position, and Lumbra's OTB games.
 
 ## Changes
+
+- **draft 1, 2026-11-18**, added to the draft: **opening names** (capability `openingNames`,
+  `knowledge/openingName`), so a client can name the opening of any line of moves, offline and
+  with no position skipped, from a list the node holds (cjus/chessgui#755's follow-up). All
+  optional: a node that doesn't offer it, or a client that doesn't send it, is unchanged.
 
 - **draft 1, 2026-11-16**, clarified: a node that offers `puzzleFilters` answers
   `knowledge/puzzleFacets`' `openings` even when it is empty, as the conformance session
