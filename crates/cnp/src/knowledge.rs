@@ -86,6 +86,10 @@ pub struct Capabilities {
     /// node that doesn't offer it.
     #[serde(default)]
     pub space: bool,
+    /// `knowledge/explorer` is available. Needs [`Capabilities::read`]. A client sends it to
+    /// no node that doesn't offer it.
+    #[serde(default)]
+    pub explorer: bool,
     /// The kinds of file the node can import ([`KIND_LICHESS_PUZZLES`] and the like).
     #[serde(default)]
     pub kinds: Vec<String>,
@@ -827,6 +831,108 @@ impl RequestMethod for FindAnalyses {
     const NAME: &'static str = "knowledge/analyses";
     type Params = AnalysesParams;
     type Result = AnalysesResult;
+}
+
+/// `knowledge/explorer`'s params.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExplorerParams {
+    /// A position of four or six fields; counters are ignored.
+    pub fen: String,
+}
+
+impl ExplorerParams {
+    /// Checks the params' shapes (not whether the position is legal), or says what is wrong.
+    pub fn validate(&self) -> Result<(), String> {
+        let fields = self.fen.split_ascii_whitespace().count();
+        if self.fen.len() > MAX_FEN_BYTES || !matches!(fields, 4 | 6) {
+            return Err("a FEN has four or six fields".into());
+        }
+        Ok(())
+    }
+}
+
+/// A move played from an explorer's position, over the games that played it.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExplorerMove {
+    /// The move, in UCI.
+    pub uci: String,
+    /// How many games played it.
+    pub games: u64,
+    /// Of them, White's wins.
+    pub white_wins: u64,
+    /// Of them, draws.
+    pub draws: u64,
+    /// Of them, Black's wins.
+    pub black_wins: u64,
+    /// The mean, over those games, of the two players' mean rating.
+    pub elo: i64,
+}
+
+/// One of the strongest games that reached an explorer's position.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExplorerGame {
+    /// The game's identity, with where it is from before a colon: `lichess:AbCdEf12`.
+    pub id: String,
+    /// White's name, when the source gave one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub white: Option<String>,
+    /// Black's name, when the source gave one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub black: Option<String>,
+    /// White's rating.
+    pub white_elo: i64,
+    /// Black's rating.
+    pub black_elo: i64,
+    /// How it ended: `1-0`, `0-1` or `1/2-1/2`.
+    pub result: String,
+    /// The day it was played, `YYYY-MM-DD`, when the source gave one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub date: Option<String>,
+    /// The move it played from this position, in UCI.
+    pub uci: String,
+}
+
+/// `knowledge/explorer`'s result. A position the node doesn't hold has no games, moves or
+/// strongest games: out of book, not an error.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExplorerResult {
+    /// The position as the node identifies it, as in [`AnalysesResult::position`]. A client
+    /// applies the answer only to a position it matches.
+    pub position: String,
+    /// The position's ECO code, `B00`, when a named line ends there; with
+    /// [`ExplorerResult::opening`] or not at all.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub eco: Option<String>,
+    /// The opening's name, `King's Pawn Game`, when a named line ends at the position; with
+    /// [`ExplorerResult::eco`] or not at all. A position without one is named by the client, if
+    /// it likes, after the last named position along the moves it knows led there.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub opening: Option<String>,
+    /// How many games reached the position, each counted once.
+    pub games: u64,
+    /// Of them, White's wins.
+    pub white_wins: u64,
+    /// Of them, draws.
+    pub draws: u64,
+    /// Of them, Black's wins.
+    pub black_wins: u64,
+    /// Every move those games played from it, most played first.
+    pub moves: Vec<ExplorerMove>,
+    /// The strongest games that reached it, strongest first.
+    pub top: Vec<ExplorerGame>,
+    /// The sources of the games counted.
+    pub sources: Vec<Source>,
+}
+
+/// What the sources' games played from a position.
+pub enum FindExplorer {}
+impl RequestMethod for FindExplorer {
+    const NAME: &'static str = "knowledge/explorer";
+    type Params = ExplorerParams;
+    type Result = ExplorerResult;
 }
 
 /// `knowledge/exercises`' params: all optional, and the params may be left out.
