@@ -186,6 +186,15 @@ fn the_specs_json_examples_are_valid() {
         } else if value.get("puzzles").is_some() {
             let r: knowledge::PuzzlesResult = serde_json::from_value(value).unwrap();
             assert_eq!(r.puzzles[0].moves.len(), 6);
+        } else if value.get("position").is_some() && value.get("analyses").is_none() {
+            let r: knowledge::OpeningNameResult = serde_json::from_value(value).unwrap();
+            // The three are there together or not at all.
+            assert_eq!(r.name().is_some(), r.ply.is_some(), "{r:?}");
+        } else if value.get("moves").is_some() && value.get("fen").is_some() {
+            serde_json::from_value::<knowledge::OpeningNameParams>(value)
+                .unwrap()
+                .validate()
+                .unwrap();
         } else if value.get("analyses").is_some() {
             let r: knowledge::AnalysesResult = serde_json::from_value(value).unwrap();
             assert_eq!(
@@ -591,4 +600,61 @@ fn a_removal_names_an_identity_and_answers_the_import_it_removed() {
     .unwrap();
     assert_eq!(answer.removed.accepted, 6_193_530);
     assert_eq!(answer.bytes, 49_098_752);
+}
+
+#[test]
+fn the_opening_names_capability_is_its_own_switch_and_older_nodes_lack_it() {
+    let c: knowledge::Capabilities =
+        serde_json::from_value(json!({"openingNames": true, "contract": "draft-1"})).unwrap();
+    assert!(c.opening_names && !c.read && !c.import);
+    let older: knowledge::Capabilities =
+        serde_json::from_value(json!({"read": true, "contract": "draft-1"})).unwrap();
+    assert!(!older.opening_names);
+    assert_eq!(
+        serde_json::to_value(&c).unwrap()["openingNames"],
+        json!(true)
+    );
+}
+
+#[test]
+fn opening_name_params_are_a_fen_and_moves_in_uci() {
+    let start = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+    let params = |fen: &str, moves: &[&str]| knowledge::OpeningNameParams {
+        fen: fen.into(),
+        moves: moves.iter().map(|m| m.to_string()).collect(),
+    };
+    assert_eq!(params(start, &["e2e4", "e7e5", "e7e8q"]).validate(), Ok(()));
+    assert_eq!(params(start, &[]).validate(), Ok(()), "the start itself");
+    assert!(params("8/8/8/8/8/8/8/8 w -", &[]).validate().is_err());
+    for bad in ["e2e9", "i2e4", "e2e4k", "O-O", "e2", "Nf3", ""] {
+        assert!(params(start, &[bad]).validate().is_err(), "{bad:?}");
+    }
+    let long = vec!["e2e4"; knowledge::MAX_LINE_MOVES + 1];
+    assert!(params(start, &long).validate().is_err());
+    let no_moves: knowledge::OpeningNameParams =
+        serde_json::from_value(json!({"fen": start})).unwrap();
+    assert!(no_moves.moves.is_empty());
+    use cnp::RequestMethod;
+    assert_eq!(knowledge::NameOpening::NAME, "knowledge/openingName");
+}
+
+#[test]
+fn an_opening_name_answer_leaves_out_what_it_hasnt() {
+    let named: knowledge::OpeningNameResult = serde_json::from_value(json!({
+        "position": "r1bqkbnr/pppp1ppp/2n5/1B2p3/4P3/5N2/PPPP1PPP/RNBQK2R b KQkq -",
+        "eco": "C60", "opening": "Ruy Lopez", "ply": 5
+    }))
+    .unwrap();
+    assert_eq!(named.name(), Some(("C60", "Ruy Lopez")));
+    let unnamed = knowledge::OpeningNameResult {
+        position: "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq -".into(),
+        eco: None,
+        opening: None,
+        ply: None,
+    };
+    assert_eq!(unnamed.name(), None);
+    assert_eq!(
+        serde_json::to_value(&unnamed).unwrap(),
+        json!({"position": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq -"})
+    );
 }

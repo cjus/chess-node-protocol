@@ -10,6 +10,8 @@
 //! first, or from a random point, and only the reliable ones if asked), [`FindPuzzleFacets`]
 //! for how many there are of each theme and rating band, [`FindAnalyses`] of a position, and
 //! [`FindExercises`] by theme, each from complete imports only and naming its [`Source`]s.
+//! Beside them, [`NameOpening`] names the opening of a line of moves from the node's own list
+//! of named openings, not from imports.
 //!
 //! **The node doesn't download.** The client fetches the file, where it can show the licence,
 //! the size and the progress. The node verifies the file against the manifest's checksum before
@@ -21,7 +23,8 @@
 //!
 //! **Pitfall: apply an answer only to the position it is of.** [`AnalysesResult::position`] is
 //! the position as the node identifies it; a client compares it with its own current position
-//! before it shows the answer.
+//! before it shows the answer. An opening's name depends on the whole line, not only where it
+//! ends, so a client applies an [`OpeningNameResult`] only to the line it asked about.
 //!
 //! **Pitfall: variants aren't versions.** A kind's variants (a puzzle database's releases, the
 //! Strategic Test Suite's differently scored files) are different sources, told apart by
@@ -86,6 +89,10 @@ pub struct Capabilities {
     /// node that doesn't offer it.
     #[serde(default)]
     pub space: bool,
+    /// `knowledge/openingName` is available: the node names the opening of a line of moves
+    /// from a list of named openings it holds itself. It needs no import and no other switch.
+    #[serde(default)]
+    pub opening_names: bool,
     /// The kinds of file the node can import ([`KIND_LICHESS_PUZZLES`] and the like).
     #[serde(default)]
     pub kinds: Vec<String>,
@@ -827,6 +834,86 @@ impl RequestMethod for FindAnalyses {
     const NAME: &'static str = "knowledge/analyses";
     type Params = AnalysesParams;
     type Result = AnalysesResult;
+}
+
+/// The most moves a `knowledge/openingName` line has: far more than any game.
+pub const MAX_LINE_MOVES: usize = 1024;
+
+/// `knowledge/openingName`'s params: a line of moves from a position.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OpeningNameParams {
+    /// Where the line starts: a position of four to six fields (counters are ignored), such as
+    /// a game's start.
+    pub fen: String,
+    /// The line's moves from `fen`, in UCI, at most [`MAX_LINE_MOVES`]; empty names `fen`
+    /// itself.
+    #[serde(default)]
+    pub moves: Vec<String>,
+}
+
+impl OpeningNameParams {
+    /// Checks the params' shapes (not whether the position or the moves are legal), or says
+    /// what is wrong.
+    pub fn validate(&self) -> Result<(), String> {
+        let fields = self.fen.split_ascii_whitespace().count();
+        if self.fen.len() > MAX_FEN_BYTES || !matches!(fields, 4..=6) {
+            return Err("a FEN has four to six fields".into());
+        }
+        if self.moves.len() > MAX_LINE_MOVES {
+            return Err(format!("at most {MAX_LINE_MOVES} moves"));
+        }
+        if let Some(bad) = self.moves.iter().find(|mv| !looks_like_uci(mv)) {
+            return Err(format!("{bad:?} isn't a move in UCI"));
+        }
+        Ok(())
+    }
+}
+
+/// Whether `text` has a UCI move's shape: two squares and an optional promotion piece.
+fn looks_like_uci(text: &str) -> bool {
+    let b = text.as_bytes();
+    let square =
+        |file: u8, rank: u8| (b'a'..=b'h').contains(&file) && (b'1'..=b'8').contains(&rank);
+    matches!(b.len(), 4 | 5)
+        && square(b[0], b[1])
+        && square(b[2], b[3])
+        && b.get(4).is_none_or(|piece| b"nbrq".contains(piece))
+}
+
+/// `knowledge/openingName`'s result: the name of the last named position along the line.
+///
+/// `eco`, `opening` and `ply` are there together or not at all: all absent when no position
+/// along the line, its start included, is named.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OpeningNameResult {
+    /// The position the line ends at, as the node identifies it (as
+    /// [`AnalysesResult::position`]).
+    pub position: String,
+    /// The named position's ECO code, `C60`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub eco: Option<String>,
+    /// The named position's opening, `Ruy Lopez`, or `Family: Variation, Subvariation`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub opening: Option<String>,
+    /// How many of the line's moves lead to the named position: 0 for the start, the number
+    /// of moves for the position the line ends at.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ply: Option<u32>,
+}
+
+impl OpeningNameResult {
+    /// The name, as its ECO code and opening, if the answer has both.
+    pub fn name(&self) -> Option<(&str, &str)> {
+        Some((self.eco.as_deref()?, self.opening.as_deref()?))
+    }
+}
+
+/// The opening of a line of moves, from the node's list of named openings.
+pub enum NameOpening {}
+impl RequestMethod for NameOpening {
+    const NAME: &'static str = "knowledge/openingName";
+    type Params = OpeningNameParams;
+    type Result = OpeningNameResult;
 }
 
 /// `knowledge/exercises`' params: all optional, and the params may be left out.

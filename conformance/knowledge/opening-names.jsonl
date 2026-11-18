@@ -1,0 +1,21 @@
+{"session":"knowledge-opening-names","description":"draft-1 knowledge/openingName names the last named position along a line, matched by position so a transposition is named too; a line nothing names answers its position alone; an illegal move or a malformed FEN is invalid params (spec/knowledge.md, Naming openings)","requires":["knowledge.openingNames"]}
+{"send":{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocol":"1.0","client":{"name":"cnp-conformance","version":"1.0"}}}}
+{"expect":{"id":1,"result":{"capabilities":{"knowledge":{"contract":"draft-1","openingNames":true}}}}}
+{"comment":"The Morphy Defense: named at 3... a6, and no listed line ends at 4. Ba4 or 4... Nf6."}
+{"send":{"jsonrpc":"2.0","id":2,"method":"knowledge/openingName","params":{"fen":"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1","moves":["e2e4","e7e5","g1f3","b8c6","f1b5","a7a6","b5a4","g8f6"]}}}
+{"expect":{"id":2,"result":{"position":"r1bqkb1r/1ppp1ppp/p1n2n2/4p3/B3P3/5N2/PPPP1PPP/RNBQK2R w KQkq -","eco":"C70","opening":"Ruy Lopez: Morphy Defense","ply":6}}}
+{"comment":"D35 by another move order."}
+{"send":{"jsonrpc":"2.0","id":3,"method":"knowledge/openingName","params":{"fen":"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1","moves":["d2d4","g8f6","c2c4","e7e6","b1c3","d7d5"]}}}
+{"expect":{"id":3,"result":{"eco":"D35","opening":"Queen's Gambit Declined: Normal Defense","ply":6}}}
+{"comment":"The start, with no moves: no listed line ends there."}
+{"send":{"jsonrpc":"2.0","id":4,"method":"knowledge/openingName","params":{"fen":"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq -","moves":[]}}}
+{"expect":{"id":4,"result":{"position":"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq -","eco":"$absent","opening":"$absent","ply":"$absent"}}}
+{"comment":"A move that isn't legal where it is played."}
+{"send":{"jsonrpc":"2.0","id":5,"method":"knowledge/openingName","params":{"fen":"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1","moves":["e2e4","e2e4"]}}}
+{"expect":{"id":5,"error":{"code":-32602}}}
+{"send":{"jsonrpc":"2.0","id":6,"method":"knowledge/openingName","params":{"fen":"not a fen","moves":[]}}}
+{"expect":{"id":6,"error":{"code":-32602}}}
+{"send":{"jsonrpc":"2.0","id":7,"method":"shutdown"}}
+{"expect":{"id":7,"result":null}}
+{"send":{"jsonrpc":"2.0","method":"exit"}}
+{"expectExit":0}
